@@ -3,6 +3,7 @@
 // #include <pybind11/stl.h>
 #include <algorithm>
 #include <random>
+#include <sstream>
 #include <iostream>
 using std::cout;
 using std::cerr;
@@ -344,6 +345,10 @@ struct Requirements {
         return reactors == 0 && thrusters == 0 && shields == 0 && damages == 0;
     }
 
+    /// Returns a (optionally colorized) string representation of this
+    /// requirements set.
+    std::string to_string(bool color = false) const;
+
     bool operator==(const Requirements& other) const {
         return (
             reactors == other.reactors &&
@@ -545,6 +550,36 @@ public:
 const MissCard MISS;
 
 
+std::string Requirements::to_string(bool color) const {
+    const struct {
+        char letter;
+        const char* color;
+        size_t count;
+    } reqs[] = {
+        {REACTOR.letter, REACTOR.color, reactors},
+        {THRUSTER.letter, THRUSTER.color, thrusters},
+        {SHIELD.letter, SHIELD.color, shields},
+        {DAMAGE.letter, DAMAGE.color, damages},
+    };
+
+    std::ostringstream buf;
+    bool empty = true;
+    for (auto&& req : reqs) {
+        if (req.count > 0) {
+            if (!empty) buf << ", ";
+            if (color) buf << "\033[" << req.color << 'm';
+            buf << req.letter;
+            if (color) buf << "\033[0m\xc3\x97";
+            else buf << 'x';
+            buf << req.count;
+            empty = false;
+        }
+    }
+
+    return buf.str();
+}
+
+
 const Cards DEFAULT_DECK{
     {&REACTOR,  3},
     {&THRUSTER, 2},
@@ -577,7 +612,10 @@ PYBIND11_MODULE(contract_solver_stuff, m) {
         .def_readonly("thrusters", &Requirements::thrusters)
         .def_readonly("shields", &Requirements::shields)
         .def_readonly("damages", &Requirements::damages)
-        .def("is_empty", &Requirements::is_empty);
+        .def("is_empty", &Requirements::is_empty)
+        .def("to_string", &Requirements::to_string, py::arg("color") = false)
+        .def("__str__", [](const Requirements& reqs) { return reqs.to_string(); })
+        .def("__repr__", [](const Requirements& reqs) { return "Requirements<"+reqs.to_string()+">"; });
 
     py::class_<State>(m, "State")
         .def(py::init<size_t, Cards, Cards, Requirements>(), py::arg("actions"), py::arg("hand"), py::arg("draw_pile"), py::arg("requirements"))

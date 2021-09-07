@@ -36,7 +36,7 @@ def main():
     """
 
     requirements = Requirements(reactors=2, shields=2)
-    print(f'requirements: {requirements}')
+    print(f'requirements: {requirements.to_string(color=True)}')
 
     draw_pile, hand = get_default_deck().draw_random(5)
     # hand = RRTTS  ->  prob > 1.0
