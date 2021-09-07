@@ -322,27 +322,23 @@ struct Requirements {
     size_t reactors  = 0;
     size_t thrusters = 0;
     size_t shields   = 0;
-    size_t damages   = 0;
+    size_t damage    = 0;
+    size_t crew      = 0;
 
-    void sub_reactors(size_t n) {
-        if (n >= reactors) reactors = 0;
-        else reactors -= n;
-    }
-    void sub_thrusters(size_t n) {
-        if (n >= thrusters) thrusters = 0;
-        else thrusters -= n;
-    }
-    void sub_shields(size_t n) {
-        if (n >= shields) shields = 0;
-        else shields -= n;
-    }
-    void sub_damages(size_t n) {
-        if (n >= damages) damages = 0;
-        else damages -= n;
-    }
+    #define DEF_SUB_REQ(req_name) \
+        void sub_##req_name(size_t n) {\
+            if (n >= req_name) req_name = 0;\
+            else req_name -= n;\
+        }
+    DEF_SUB_REQ(reactors)
+    DEF_SUB_REQ(thrusters)
+    DEF_SUB_REQ(shields)
+    DEF_SUB_REQ(damage)
+    DEF_SUB_REQ(crew)
+    #undef DEF_SUB_REQ
 
     bool is_empty() const {
-        return reactors == 0 && thrusters == 0 && shields == 0 && damages == 0;
+        return reactors == 0 && thrusters == 0 && shields == 0 && damage == 0 && crew == 0;
     }
 
     /// Returns a (optionally colorized) string representation of this
@@ -354,7 +350,8 @@ struct Requirements {
             reactors == other.reactors &&
             thrusters == other.thrusters &&
             shields == other.shields &&
-            damages == other.damages
+            damage == other.damage &&
+            crew == other.crew
         );
     }
 };
@@ -408,7 +405,8 @@ namespace std {
             hash_combine(seed, r.reactors);
             hash_combine(seed, r.thrusters);
             hash_combine(seed, r.shields);
-            hash_combine(seed, r.damages);
+            hash_combine(seed, r.damage);
+            hash_combine(seed, r.crew);
             return seed;
         }
     };
@@ -531,7 +529,7 @@ public:
         State new_state = state;
         new_state.hand.remove(this);
         new_state.actions -= 1;
-        new_state.requirements.sub_damages(1);
+        new_state.requirements.sub_damage(1);
         return solver.get_completion_probability(new_state);
     }
 };
@@ -559,7 +557,8 @@ std::string Requirements::to_string(bool color) const {
         {REACTOR.letter, REACTOR.color, reactors},
         {THRUSTER.letter, THRUSTER.color, thrusters},
         {SHIELD.letter, SHIELD.color, shields},
-        {DAMAGE.letter, DAMAGE.color, damages},
+        {DAMAGE.letter, DAMAGE.color, damage},
+        {'C', "95", crew},
     };
 
     std::ostringstream buf;
@@ -607,11 +606,12 @@ PYBIND11_MODULE(contract_solver_stuff, m) {
         .def("__repr__", [](const Cards& cards) { return "Cards<"+cards.to_string()+">"; });
 
     py::class_<Requirements>(m, "Requirements")
-        .def(py::init<size_t, size_t, size_t, size_t>(), py::arg("reactors") = 0, py::arg("thrusters") = 0, py::arg("shields") = 0, py::arg("damages") = 0)
-        .def_readonly("reactors", &Requirements::reactors)
-        .def_readonly("thrusters", &Requirements::thrusters)
-        .def_readonly("shields", &Requirements::shields)
-        .def_readonly("damages", &Requirements::damages)
+        .def(py::init<size_t, size_t, size_t, size_t, size_t>(), py::arg("reactors") = 0, py::arg("thrusters") = 0, py::arg("shields") = 0, py::arg("damage") = 0, py::arg("crew") = 0)
+        .def_readwrite("reactors", &Requirements::reactors)
+        .def_readwrite("thrusters", &Requirements::thrusters)
+        .def_readwrite("shields", &Requirements::shields)
+        .def_readwrite("damage", &Requirements::damage)
+        .def_readwrite("crew", &Requirements::crew)
         .def("is_empty", &Requirements::is_empty)
         .def("to_string", &Requirements::to_string, py::arg("color") = false)
         .def("__str__", [](const Requirements& reqs) { return reqs.to_string(); })

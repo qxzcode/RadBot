@@ -35,7 +35,7 @@ def main():
     quit()
     """
 
-    requirements = Requirements(reactors=2, shields=2)
+    requirements = Requirements(reactors=3, shields=2, thrusters=1, damage=1)
     print(f'requirements: {requirements.to_string(color=True)}')
 
     draw_pile, hand = get_default_deck().draw_random(5)
@@ -77,7 +77,7 @@ def main():
     if prob == 0:
         extra_str = 'impossible'
     elif math.isclose(prob, 1, abs_tol=1e-6):  # allow for rounding error
-        extra_str = 'always possible'
+        extra_str = 'guaranteed possible'
     else:
         in_n = 1 / prob
         if math.isclose(in_n, round(in_n), abs_tol=1e-6):
