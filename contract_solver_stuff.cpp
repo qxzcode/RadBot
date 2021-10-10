@@ -357,6 +357,45 @@ struct Requirements {
 };
 
 
+/// A set of rewards (from a contract).
+struct Rewards {
+    size_t prestige;
+    size_t credits = 0;
+    size_t cards = 0;
+
+    /// Returns a string representation of these rewards.
+    std::string to_string() const {
+        std::string str = "Rewards(prestige=";
+        str += std::to_string(prestige);
+        if (credits > 0) {
+            str += ", credits=";
+            str += std::to_string(credits);
+        }
+        if (cards > 0) {
+            str += ", cards=";
+            str += std::to_string(cards);
+        }
+        str += ')';
+        return str;
+    }
+};
+
+
+/// A contract.
+struct Contract {
+    enum Type { EXPLORE, DELIVERY, RESCUE, KILL };
+
+    std::string name;
+    Type type;
+    Rewards rewards;
+    Requirements requirements;
+    size_t hazard_dice;
+
+    /// Returns a (optionally colorized) string representation of this contract.
+    //std::string to_string(bool color = false) const;
+};
+
+
 /// A description of the game state while completing the contract.
 struct State {
     size_t actions;
@@ -616,6 +655,29 @@ PYBIND11_MODULE(contract_solver_stuff, m) {
         .def("to_string", &Requirements::to_string, py::arg("color") = false)
         .def("__str__", [](const Requirements& reqs) { return reqs.to_string(); })
         .def("__repr__", [](const Requirements& reqs) { return "Requirements<"+reqs.to_string()+">"; });
+
+    py::class_<Rewards>(m, "Rewards")
+        .def(py::init<size_t, size_t, size_t>(), py::arg("prestige"), py::arg("credits") = 0, py::arg("cards") = 0)
+        .def_readwrite("prestige", &Rewards::prestige)
+        .def_readwrite("credits", &Rewards::credits)
+        .def_readwrite("cards", &Rewards::cards)
+        .def("to_string", &Rewards::to_string)
+        .def("__repr__", [](const Rewards& rewards) { return rewards.to_string(); });
+
+    py::class_<Contract> contract_class(m, "Contract");
+    contract_class
+        .def(py::init<std::string, Contract::Type, Rewards, Requirements, size_t>(), py::arg("name"), py::arg("type"), py::arg("rewards"), py::arg("requirements"), py::arg("hazard_dice"))
+        .def_readwrite("name", &Contract::name)
+        .def_readwrite("type", &Contract::type)
+        .def_readwrite("rewards", &Contract::rewards)
+        .def_readwrite("requirements", &Contract::requirements)
+        .def_readwrite("hazard_dice", &Contract::hazard_dice);
+    py::enum_<Contract::Type>(contract_class, "Type")
+        .value("EXPLORE", Contract::EXPLORE)
+        .value("DELIVERY", Contract::DELIVERY)
+        .value("RESCUE", Contract::RESCUE)
+        .value("KILL", Contract::KILL)
+        .export_values();
 
     py::class_<State>(m, "State")
         .def(py::init<size_t, Cards, Cards, Requirements>(), py::arg("actions"), py::arg("hand"), py::arg("draw_pile"), py::arg("requirements"))
