@@ -358,34 +358,44 @@ def main():
     quit()
     """
 
-    requirements = Requirements(reactors=2, shields=2, thrusters=1)
-    requirements = random.choice(CONTRACTS).requirements
-    print(f'requirements: {requirements.to_string(color=True)}')
-
     draw_pile, hand = get_default_deck().draw_random(5)
     # hand = RRTTS  ->  prob > 1.0
     print(f'hand: {hand.to_console_string()}  |  draw pile: {draw_pile.to_console_string()}')
 
-    """
-    # sample
-    NUM_SAMP = 100000
-    num_draw = min(3, len(draw_pile))
-    c = Counter(
-        ''.join(sorted(str(draw_pile.draw_random(num_draw)[1])))
-        for _ in range(NUM_SAMP)
-    )
+    #########
 
-    # analyze
-    dp_c = Counter(str(draw_pile))
-    for k, v in c.items():
-        k_c = Counter(k)
-        prob = math.prod(
-            math.comb(dp_c[t], k_c[t])
-            for t in dp_c.keys()  # or, equiv.: k_c.keys()
-        ) / math.comb(len(draw_pile), num_draw)
-        print(k, prob*NUM_SAMP, v/(prob*NUM_SAMP))
-    return
-    """
+    solver = Solver()
+    def get_expected_credits(contract):
+        draw_pile, hand = get_default_deck().draw_random(5)
+        start_state = State(
+            actions=1,
+            hand=hand,
+            draw_pile=draw_pile,
+            requirements=contract.requirements,
+        )
+        prob = solver.get_completion_probability(start_state)
+        return prob * contract.rewards.credits
+
+    EASY_CONTRACTS = [c for c in CONTRACTS if c.hazard_dice <= 2]
+    with time_block('solve'):
+        total_credits = 0
+        count = 0
+        N = 10000
+        for _ in range(N):
+            best = -math.inf
+            for contract in random.sample(EASY_CONTRACTS, k=8):
+                best = max(best, get_expected_credits(contract))
+            total_credits += best
+            count += 1
+    print(f'expected credits: {total_credits/count}')
+    print(f'[explored {solver.explored_states_count()-N*8} non-root states]')
+    quit()
+
+    #########
+
+    requirements = Requirements(reactors=2, shields=2, thrusters=1)
+    requirements = random.choice(CONTRACTS).requirements
+    print(f'requirements: {requirements.to_string(color=True)}')
 
     start_state = State(
         actions=1,
@@ -398,6 +408,7 @@ def main():
     with time_block('solve'):
         prob = solver.get_completion_probability(start_state)
     print(f'[explored {solver.explored_states_count()} states]')
+
     if prob == 0:
         extra_str = 'impossible'
     elif math.isclose(prob, 1, abs_tol=1e-6):  # allow for rounding error
