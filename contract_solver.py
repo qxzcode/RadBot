@@ -9,6 +9,329 @@ import cppimport.import_hook
 from contract_solver_stuff import *
 
 
+CONTRACTS = [
+    Contract(
+        'Abandoned Vessel',
+        Contract.EXPLORE,
+        Rewards(prestige=1, credits=4, cards=1),
+        Requirements(reactors=3, damage=3),
+        hazard_dice=2,
+    ),
+    Contract(
+        'Derelict Planet',
+        Contract.EXPLORE,
+        Rewards(prestige=3, credits=8),
+        Requirements(reactors=5, crew=3, thrusters=2),
+        hazard_dice=2,
+    ),
+    Contract(
+        'Reactor Failure',
+        Contract.RESCUE,
+        Rewards(prestige=0, credits=3),
+        Requirements(shields=1, reactors=1),
+        hazard_dice=0,
+    ),
+    Contract(
+        'Supernova Escape',
+        Contract.RESCUE,
+        Rewards(prestige=1, credits=3),
+        Requirements(shields=2, thrusters=1),
+        hazard_dice=1,
+    ),
+    Contract(
+        'Asteroid Field',
+        Contract.EXPLORE,
+        Rewards(prestige=2, credits=8),
+        Requirements(reactors=4, crew=3),
+        hazard_dice=2,
+    ),
+    Contract(
+        'Icarus Run',
+        Contract.RESCUE,
+        Rewards(prestige=2, credits=8),
+        Requirements(shields=3, thrusters=3),
+        hazard_dice=2,
+    ),
+    Contract(
+        'Space Anomaly',
+        Contract.EXPLORE,
+        Rewards(prestige=0, credits=3),
+        Requirements(reactors=1, damage=1),
+        hazard_dice=0,
+    ),
+    Contract(
+        'Gauntlet Run',
+        Contract.DELIVERY,
+        Rewards(prestige=3, cards=2),
+        Requirements(thrusters=4, damage=4),
+        hazard_dice=2,
+    ),
+    Contract(
+        'Nova Bloom',
+        Contract.EXPLORE,
+        Rewards(prestige=3, credits=7),
+        Requirements(reactors=5, shields=3),
+        hazard_dice=3,
+    ),
+
+    Contract(
+        'Decoy Target',
+        Contract.RESCUE,
+        Rewards(prestige=3, cards=3),
+        Requirements(shields=4, thrusters=4),
+        hazard_dice=3,
+    ),
+    Contract(
+        'Kill Slavers',
+        Contract.KILL,
+        Rewards(prestige=0, credits=4),
+        Requirements(damage=1, thrusters=1),
+        hazard_dice=0,
+    ),
+    Contract(
+        'Refugee Crisis',
+        Contract.DELIVERY,
+        Rewards(prestige=2, credits=7),
+        Requirements(thrusters=3, crew=2),
+        hazard_dice=2,
+    ),
+    Contract(
+        'Emergency Meds',
+        Contract.DELIVERY,
+        Rewards(prestige=3, credits=8),
+        Requirements(thrusters=4, damage=4, reactors=3),
+        hazard_dice=2,
+    ),
+    Contract(
+        'Elite Squadron',
+        Contract.KILL,
+        Rewards(prestige=4, credits=6, cards=1),
+        Requirements(damage=8, reactors=4, shields=3),
+        hazard_dice=3,
+    ),
+    Contract(
+        'Resistance Leader',
+        Contract.RESCUE,
+        Rewards(prestige=4, credits=6),
+        Requirements(shields=4, thrusters=2, crew=2),
+        hazard_dice=3,
+    ),
+    Contract(
+        'Core World Ace',
+        Contract.KILL,
+        Rewards(prestige=1, credits=5, cards=1),
+        Requirements(damage=5),
+        hazard_dice=1,
+    ),
+    Contract(
+        'Prison Moon',
+        Contract.RESCUE,
+        Rewards(prestige=5, credits=10),
+        Requirements(shields=5, thrusters=4, damage=2),
+        hazard_dice=4,
+    ),
+    Contract(
+        'Black Hole',
+        Contract.EXPLORE,
+        Rewards(prestige=5, credits=12),
+        Requirements(crew=5, reactors=4, thrusters=4),
+        hazard_dice=4,
+    ),
+
+    Contract(
+        'Boarding Action',
+        Contract.EXPLORE,
+        Rewards(prestige=4, cards=2),
+        Requirements(crew=4, damage=5),
+        hazard_dice=3,
+    ),
+    Contract(
+        'Escape Pods',
+        Contract.RESCUE,
+        Rewards(prestige=2, credits=7),
+        Requirements(shields=3, damage=3),
+        hazard_dice=2,
+    ),
+    Contract(
+        'Transport Rescue',
+        Contract.RESCUE,
+        Rewards(prestige=1, credits=3),
+        Requirements(shields=2, crew=1),
+        hazard_dice=1,
+    ),
+    Contract(
+        'Munitions Stockpile',
+        Contract.DELIVERY,
+        Rewards(prestige=3, credits=7),
+        Requirements(thrusters=4, shields=3),
+        hazard_dice=2,
+    ),
+    Contract(
+        'Bomber Screen',
+        Contract.KILL,
+        Rewards(prestige=3, credits=9),
+        Requirements(damage=6, thrusters=3),
+        hazard_dice=3,
+    ),
+    Contract(
+        'Assault on Vilonia',
+        Contract.KILL,
+        Rewards(prestige=3, credits=5, cards=1),
+        Requirements(damage=8),
+        hazard_dice=2,
+    ),
+    Contract(
+        'Scout Cruiser',
+        Contract.KILL,
+        Rewards(prestige=3, credits=6),
+        Requirements(damage=5, shields=2),
+        hazard_dice=3,
+    ),
+    Contract(
+        'First Contact',
+        Contract.EXPLORE,
+        Rewards(prestige=3, cards=2),
+        Requirements(reactors=5, shields=3),
+        hazard_dice=2,
+    ),
+    Contract(
+        'Bounty Hunters',
+        Contract.KILL,
+        Rewards(prestige=3, credits=6),
+        Requirements(damage=6, crew=2),
+        hazard_dice=3,
+    ),
+
+    Contract(
+        'Martial Law',
+        Contract.RESCUE,
+        Rewards(prestige=1, credits=4, cards=1),
+        Requirements(shields=2, crew=2),
+        hazard_dice=2,
+    ),
+    Contract(
+        'Blockade Run',
+        Contract.DELIVERY,
+        Rewards(prestige=0, credits=3),
+        Requirements(thrusters=1, shields=1),
+        hazard_dice=0,
+    ),
+    Contract(
+        'Probe Recovery',
+        Contract.EXPLORE,
+        Rewards(prestige=1, credits=2, cards=1),
+        Requirements(reactors=3, thrusters=2),
+        hazard_dice=1,
+    ),
+    Contract(
+        'Envoy in Distress',
+        Contract.RESCUE,
+        Rewards(prestige=1, credits=2, cards=1),
+        Requirements(shields=2, damage=2),
+        hazard_dice=2,
+    ),
+    Contract(
+        'Stim Run',
+        Contract.DELIVERY,
+        Rewards(prestige=1, credits=2),
+        Requirements(thrusters=2, reactors=1),
+        hazard_dice=1,
+    ),
+    Contract(
+        'Proof of Life',
+        Contract.DELIVERY,
+        Rewards(prestige=3, credits=4),
+        Requirements(thrusters=4, reactors=4),
+        hazard_dice=2,
+    ),
+    Contract(
+        'Pirate Treasure',
+        Contract.EXPLORE,
+        Rewards(prestige=1, credits=2),
+        Requirements(reactors=2, shields=1),
+        hazard_dice=1,
+    ),
+    Contract(
+        'Ancient Ruins',
+        Contract.EXPLORE,
+        Rewards(prestige=2, credits=7),
+        Requirements(reactors=4, thrusters=4),
+        hazard_dice=2,
+    ),
+    Contract(
+        'Rival Pirate Gang',
+        Contract.KILL,
+        Rewards(prestige=1, credits=3),
+        Requirements(damage=2, shields=1),
+        hazard_dice=1,
+    ),
+
+    Contract(
+        'Distress Beacon',
+        Contract.EXPLORE,
+        Rewards(prestige=1, credits=3),
+        Requirements(reactors=3, crew=1),
+        hazard_dice=1,
+    ),
+    Contract(
+        'Fuel Shortage',
+        Contract.DELIVERY,
+        Rewards(prestige=1, credits=3),
+        Requirements(thrusters=2, damage=2),
+        hazard_dice=1,
+    ),
+    Contract(
+        'Negotiation Insurance',
+        Contract.DELIVERY,
+        Rewards(prestige=1, credits=2, cards=1),
+        Requirements(thrusters=3, damage=1),
+        hazard_dice=2,
+    ),
+    Contract(
+        'Focused Fire',
+        Contract.KILL,
+        Rewards(prestige=3, cards=3),
+        Requirements(damage=6, reactors=4),
+        hazard_dice=3,
+    ),
+    Contract(
+        'Claim Bounty',
+        Contract.KILL,
+        Rewards(prestige=1, credits=3),
+        Requirements(damage=3, reactors=2),
+        hazard_dice=1,
+    ),
+    Contract(
+        'Royal Cargo',
+        Contract.DELIVERY,
+        Rewards(prestige=5, credits=10),
+        Requirements(thrusters=5, damage=5, crew=2),
+        hazard_dice=4,
+    ),
+    Contract(
+        "Admiral's Flagship",
+        Contract.KILL,
+        Rewards(prestige=5, credits=11, cards=1),
+        Requirements(damage=8, shields=5, reactors=5),
+        hazard_dice=4,
+    ),
+    Contract(
+        'Escort Duty',
+        Contract.DELIVERY,
+        Rewards(prestige=1, credits=2, cards=1),
+        Requirements(thrusters=3, crew=1),
+        hazard_dice=1,
+    ),
+    Contract(
+        'Cryogenic Pods',
+        Contract.RESCUE,
+        Rewards(prestige=3, credits=7),
+        Requirements(shields=4, reactors=4),
+        hazard_dice=3,
+    ),
+]
+
+
 def main():
     """
     def binomial_coefficient(n: int, k: int) -> int:
@@ -35,7 +358,8 @@ def main():
     quit()
     """
 
-    requirements = Requirements(reactors=3, shields=2, thrusters=1, damage=1)
+    requirements = Requirements(reactors=2, shields=2, thrusters=1)
+    requirements = random.choice(CONTRACTS).requirements
     print(f'requirements: {requirements.to_string(color=True)}')
 
     draw_pile, hand = get_default_deck().draw_random(5)
