@@ -358,7 +358,14 @@ def main():
     quit()
     """
 
-    draw_pile, hand = get_default_deck().draw_random(5)
+    deck = get_default_deck()
+    # deck.add(REACTOR, n=2)
+    # deck.add(THRUSTER, n=2)
+    # deck.add(SHIELD, n=1)
+    # deck.add(DAMAGE, n=1)
+    # deck.remove(MISS)
+    print(f'deck: {deck.to_console_string()}')
+    draw_pile, hand = deck.draw_random(5)
     # hand = RRTTS  ->  prob > 1.0
     print(f'hand: {hand.to_console_string()}  |  draw pile: {draw_pile.to_console_string()}')
 
@@ -366,7 +373,7 @@ def main():
 
     solver = Solver()
     def get_expected_credits(contract):
-        draw_pile, hand = get_default_deck().draw_random(5)
+        draw_pile, hand = deck.draw_random(5)
         start_state = State(
             actions=1,
             hand=hand,
@@ -379,15 +386,14 @@ def main():
     EASY_CONTRACTS = [c for c in CONTRACTS if c.hazard_dice <= 2]
     with time_block('solve'):
         total_credits = 0
-        count = 0
-        N = 10000
+        N = 100000
         for _ in range(N):
-            best = -math.inf
-            for contract in random.sample(EASY_CONTRACTS, k=8):
-                best = max(best, get_expected_credits(contract))
+            best = max([
+                get_expected_credits(contract)
+                for contract in random.sample(EASY_CONTRACTS, k=8)
+            ])
             total_credits += best
-            count += 1
-    print(f'expected credits: {total_credits/count}')
+    print(f'expected credits: {total_credits/N}')
     print(f'[explored {solver.explored_states_count()-N*8} non-root states]')
     quit()
 

@@ -46,6 +46,10 @@ public:
     }
     virtual ~CardType() {}
 
+    // non-copyable (CardType objects are intended to be singletons)
+    CardType(const CardType&) = delete;
+    CardType& operator=(const CardType&) = delete;
+
     /// Returns the completion probability after playing this card
     /// when starting in the given state.
     virtual prob_t play(const State& state, Solver& solver) const = 0;
@@ -628,8 +632,6 @@ const Cards DEFAULT_DECK{
 
 
 PYBIND11_MODULE(contract_solver_stuff, m) {
-    m.def("get_default_deck", []() { return DEFAULT_DECK; });
-
     py::class_<CardType>(m, "CardType")
         .def_readonly("letter", &CardType::letter);
 
@@ -690,6 +692,13 @@ PYBIND11_MODULE(contract_solver_stuff, m) {
         .def(py::init<>())
         .def("explored_states_count", &Solver::explored_states_count)
         .def("get_completion_probability", &Solver::get_completion_probability, py::arg("state"));
+
+    m.def("get_default_deck", []() { return DEFAULT_DECK; });
+    m.attr("REACTOR") = static_cast<const CardType*>(&REACTOR);
+    m.attr("THRUSTER") = static_cast<const CardType*>(&THRUSTER);
+    m.attr("SHIELD") = static_cast<const CardType*>(&SHIELD);
+    m.attr("DAMAGE") = static_cast<const CardType*>(&DAMAGE);
+    m.attr("MISS") = static_cast<const CardType*>(&MISS);
 }
 /*
 <%
