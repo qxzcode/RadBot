@@ -19,7 +19,7 @@ pub struct CardType {
 
 
 /// A multiset of cards.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Cards<'ctype> {
     /// A mapping from card types to the number of cards of that type.
     cards: HashMap<ByAddress<&'ctype CardType>, usize>,
@@ -84,6 +84,11 @@ impl<'ctype> Cards<'ctype> {
             panic!("Tried to remove all {:?} from a Cards, but none present",
                     card_type);
         }
+    }
+
+    /// Returns the number of cards in this multiset, counting duplicates.
+    pub fn count(&self) -> usize {
+        self.cards.values().sum()
     }
 
     /// Returns `true` if the [`Cards`] contains no cards.
