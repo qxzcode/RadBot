@@ -1,6 +1,9 @@
 use std::collections::{HashMap, hash_map::Entry};
+use std::cmp::min;
+use std::fmt;
 use rand::seq::SliceRandom;
 use by_address::ByAddress;
+use num_integer::binomial;
 
 
 #[derive(Debug)]
@@ -45,7 +48,7 @@ impl<'ctype> Cards<'ctype> {
     }
 
     /// Removes 1 of the given [`CardType`] from the [`Cards`].
-    /// 
+    ///
     /// # Panics
     /// Panics if the [`CardType`] is not present in the [`Cards`].
     pub fn remove_one(&mut self, card_type: &'ctype CardType) {
@@ -53,7 +56,7 @@ impl<'ctype> Cards<'ctype> {
     }
 
     /// Removes `n` of the given [`CardType`] from the [`Cards`].
-    /// 
+    ///
     /// # Panics
     /// Panics if there are less than `n` of the given [`CardType`] in the [`Cards`].
     pub fn remove(&mut self, card_type: &'ctype CardType, n: usize) {
@@ -76,7 +79,7 @@ impl<'ctype> Cards<'ctype> {
     }
 
     /// Removes all cards of the given [`CardType`] from the [`Cards`].
-    /// 
+    ///
     /// # Panics
     /// Panics if the [`CardType`] is not present in the [`Cards`].
     pub fn remove_all(&mut self, card_type: &'ctype CardType) {
@@ -86,9 +89,14 @@ impl<'ctype> Cards<'ctype> {
         }
     }
 
-    /// Returns the number of cards in this multiset, counting duplicates.
+    /// Returns the number of cards in the [`Cards`], counting duplicates.
     pub fn count(&self) -> usize {
         self.cards.values().sum()
+    }
+
+    /// Returns the number of unique [`CardType`]s in the [`Cards`].
+    pub fn count_unique(&self) -> usize {
+        self.cards.len()
     }
 
     /// Returns `true` if the [`Cards`] contains no cards.
@@ -98,7 +106,7 @@ impl<'ctype> Cards<'ctype> {
 
     /// Draws (up to) `n` random cards from this [`Cards`].
     /// Returns the updated [`Cards`], and the drawn [`Cards`].
-    pub fn draw_random(&self, n: usize) -> (Cards, Cards) {
+    pub fn draw_random(&self, n: usize) -> (Cards<'ctype>, Cards<'ctype>) {
         // create a list of all the cards, with repetitions
         let mut card_list = Vec::new();
         for (card_type, count) in &self.cards {
@@ -144,7 +152,195 @@ impl<'ctype> FromIterator<&'ctype CardType> for Cards<'ctype> {
     }
 }
 
+impl fmt::Display for Cards<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.is_empty() {
+            write!(f, "<no cards>")
+        } else {
+            for (card_type, &count) in &self.cards {
+                for _ in 0..count {
+                    write!(f, "{}", card_type.letter)?;
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
+
+impl<'ctype> Cards<'ctype> {
+    /// Returns an iterator that enumerates the possible unique draws of `n`
+    /// cards from the [`Cards`] as tuples of the form
+    /// `(reduced_deck, drawn_cards, probability)`.
+    /// The enumeration order is not defined, and may be different even for
+    /// equal [`Cards`] objects.
+    ///
+    /// # Examples
+    /// ```
+    /// let deck: Cards = ...;
+    /// for (left, drawn, prob) in cards.enumerate_draws(2) {
+    ///     println!("{}, {}, {}", left, drawn, prob);
+    /// }
+    /// ```
+    pub fn enumerate_draws(&self, n: usize) -> Draws<'ctype> {
+        Draws::new(self, n)
+    }
+}
+
+/// An iterator that enumerates unique draws from a [`Cards`].
+/// See [`Cards::enumerate_draws`] for details.
+/// (Note: There may be room to optimize this.)
+pub struct Draws<'ctype> {
+    /// The reciprocal of the denominator in the probability calculation.
+    prob_denom_recip: f64,
+    /// A "stack" of states for each card type.
+    states: Vec<CardTypeState<'ctype>>,
+    /// The current index into `states`.
+    index: isize,
+}
+
+struct CardTypeState<'ctype> {
+    card_type: &'ctype CardType,
+    num_in_deck: usize,
+    n_remaining: usize,
+    num_drawn: usize,
+}
+
+impl<'ctype> Draws<'ctype> {
+    fn new(cards: &Cards<'ctype>, n: usize) -> Self {
+        if cards.is_empty() {
+            return Self {
+                prob_denom_recip: 1.0, // arbitrary; will not be used
+                states: Vec::new(),
+                index: 0,
+            };
+        }
+
+        let total_cards = cards.count();
+        // only draw up to the total number of cards
+        let n = min(n, total_cards);
+
+        let prob_denom = binomial(total_cards, n);
+
+        Self {
+            prob_denom_recip: 1.0 / (prob_denom as f64),
+            states: cards.cards.iter()
+                .map(|(card_type, &count)| {
+                    CardTypeState {
+                        card_type,
+                        num_in_deck: count,
+                        n_remaining: n,
+                        num_drawn: 0,
+                    }
+                })
+                .collect(),
+            index: 0,
+        }
+    }
+
+    /// Helper function used in the next() method.
+    fn end_loop(&mut self) {
+        // draw another of this type of card (and loop again if not done)
+        while self.index >= 0 && {
+            let state = &mut self.states[self.index as usize];
+            state.num_drawn += 1;
+            state.num_drawn > min(state.n_remaining, state.num_in_deck)
+        } {
+            // tried every number of this type of card; "return" up a level
+            self.index -= 1;
+        }
+    }
+}
+
+impl<'ctype> Iterator for Draws<'ctype> {
+    type Item = (Cards<'ctype>, Cards<'ctype>, f64);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.states.is_empty() {
+            // handle the special case of drawing from an empty set of cards,
+            // where there's only one possible draw (nothing)
+            return if self.index == 0 {
+                self.index = -1;
+                Some((Cards::new(), Cards::new(), 1.0))
+            } else {
+                None
+            };
+        }
+
+        while self.index >= 0 {
+            let i = self.index as usize;
+            let cur_state = &mut self.states[i];
+            let remaining = cur_state.n_remaining - cur_state.num_drawn;
+            if remaining == 0 {
+                // found a valid draw set; return it
+                let mut reduced_deck = Cards::new();
+                let mut drawn = Cards::new();
+                let mut prob_numerator = 1.0;
+                for state in &self.states[..=i] {
+                    drawn.add(state.card_type, state.num_drawn);
+                    reduced_deck.add(state.card_type, state.num_in_deck - state.num_drawn);
+
+                    // note: these binomial coefficients could be computed incrementally
+                    // a la dynamic programming, which may(?) be faster in many(?) cases
+                    let b = binomial(state.num_in_deck, state.num_drawn);
+                    prob_numerator *= b as f64;
+                }
+                for state in &self.states[i+1..] {
+                    reduced_deck.add(state.card_type, state.num_in_deck);
+                }
+                let prob = prob_numerator * self.prob_denom_recip;
+
+                self.end_loop();
+                return Some((reduced_deck, drawn, prob));
+            } else {
+                self.index += 1;
+                if self.index >= self.states.len() as isize {
+                    // went through all card types without drawing enough cards;
+                    // don't recurse (just loop again)
+                    self.index -= 1;
+                } else {
+                    // recurse to try drawing more cards of different types
+                    let state = &mut self.states[self.index as usize];
+                    state.n_remaining = remaining;
+                    state.num_drawn = 0;
+                    continue;
+                }
+            }
+
+            self.end_loop();
+        }
+
+        // no more draws
+        None
+    }
+}
+
 
 fn main() {
     println!("Hello, world!");
+    let n_draw = 3;
+
+    println!("Empty:");
+    for (deck, drawn, prob) in Cards::new().enumerate_draws(n_draw) {
+        println!("{}, {}, {}", deck, drawn, prob);
+    }
+
+    println!("Full:");
+    let a = CardType { play_func: || 1.0, letter: 'A', color: "" };
+    let cards = Cards::from_iter(&[
+        &a,
+        &a,
+        &CardType { play_func: || 1.0, letter: 'B', color: "" },
+        &CardType { play_func: || 1.0, letter: 'C', color: "" },
+    ]);
+    for (deck, drawn, prob) in cards.enumerate_draws(n_draw) {
+        println!("{}, {}, {}", deck, drawn, prob);
+    }
+
+    println!("Drop:");
+    let iter = cards.enumerate_draws(n_draw);
+    std::mem::drop(cards);
+    for (deck, drawn, prob) in iter {
+        println!("{}, {}, {}", deck, drawn, prob);
+    }
 }
