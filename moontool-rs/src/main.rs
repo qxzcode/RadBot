@@ -155,14 +155,15 @@ impl<'ctype> FromIterator<&'ctype CardType> for Cards<'ctype> {
 impl fmt::Display for Cards<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.is_empty() {
-            write!(f, "<no cards>")
+            write!(f, "\x1b[90m<no cards>\x1b[0m")
         } else {
             for (card_type, &count) in &self.cards {
+                write!(f, "\x1b[{}m", card_type.color)?;
                 for _ in 0..count {
                     write!(f, "{}", card_type.letter)?;
                 }
             }
-            Ok(())
+            write!(f, "\x1b[0m")
         }
     }
 }
@@ -326,12 +327,12 @@ fn main() {
     }
 
     println!("Full:");
-    let a = CardType { play_func: || 1.0, letter: 'A', color: "" };
+    let a = CardType { play_func: || 1.0, letter: 'R', color: "96" };
     let cards = Cards::from_iter(&[
         &a,
         &a,
-        &CardType { play_func: || 1.0, letter: 'B', color: "" },
-        &CardType { play_func: || 1.0, letter: 'C', color: "" },
+        &CardType { play_func: || 1.0, letter: 'T', color: "93" },
+        &CardType { play_func: || 1.0, letter: 'S', color: "92" },
     ]);
     for (deck, drawn, prob) in cards.enumerate_draws(n_draw) {
         println!("{}, {}, {}", deck, drawn, prob);
