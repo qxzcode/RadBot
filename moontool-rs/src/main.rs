@@ -244,7 +244,32 @@ impl<'ctype> Draws<'ctype> {
         }
     }
 
-    /// Helper function used in the next() method.
+    /// Constructs a result tuple from the current state of the iterator.
+    /// Also calls `end_loop()` to prepare for the next iteration.
+    fn make_result(&mut self) -> (Cards<'ctype>, Cards<'ctype>, f64) {
+        let mut reduced_deck = Cards::new();
+        let mut drawn_cards = Cards::new();
+        let mut prob_numerator = 1.0;
+        let i = self.index as usize;
+        for state in &self.states[..=i] {
+            drawn_cards.add(state.card_type, state.num_drawn);
+            reduced_deck.add(state.card_type, state.num_in_deck - state.num_drawn);
+
+            // note: these binomial coefficients could be computed incrementally
+            // a la dynamic programming, which may(?) be faster in many(?) cases
+            let b = num_integer::binomial(state.num_in_deck, state.num_drawn);
+            prob_numerator *= b as f64;
+        }
+        for state in &self.states[i+1..] {
+            reduced_deck.add(state.card_type, state.num_in_deck);
+        }
+        let prob = prob_numerator * self.prob_denom_recip;
+
+        self.end_loop();
+        (reduced_deck, drawn_cards, prob)
+    }
+
+    /// Helper function which advances one or more of the "recursive" loops.
     fn end_loop(&mut self) {
         // draw another of this type of card (and loop again if not done)
         while self.index >= 0 && {
@@ -252,7 +277,7 @@ impl<'ctype> Draws<'ctype> {
             state.num_drawn += 1;
             state.num_drawn > cmp::min(state.n_remaining, state.num_in_deck)
         } {
-            // tried every number of this type of card; "return" up a level
+            // tried every count of this type of card; "return" up a level
             self.index -= 1;
         }
     }
@@ -279,25 +304,7 @@ impl<'ctype> Iterator for Draws<'ctype> {
             let remaining = cur_state.n_remaining - cur_state.num_drawn;
             if remaining == 0 {
                 // found a valid draw set; return it
-                let mut reduced_deck = Cards::new();
-                let mut drawn = Cards::new();
-                let mut prob_numerator = 1.0;
-                for state in &self.states[..=i] {
-                    drawn.add(state.card_type, state.num_drawn);
-                    reduced_deck.add(state.card_type, state.num_in_deck - state.num_drawn);
-
-                    // note: these binomial coefficients could be computed incrementally
-                    // a la dynamic programming, which may(?) be faster in many(?) cases
-                    let b = num_integer::binomial(state.num_in_deck, state.num_drawn);
-                    prob_numerator *= b as f64;
-                }
-                for state in &self.states[i+1..] {
-                    reduced_deck.add(state.card_type, state.num_in_deck);
-                }
-                let prob = prob_numerator * self.prob_denom_recip;
-
-                self.end_loop();
-                return Some((reduced_deck, drawn, prob));
+                return Some(self.make_result());
             } else {
                 self.index += 1;
                 if self.index >= self.states.len() as isize {
