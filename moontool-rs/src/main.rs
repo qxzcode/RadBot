@@ -1,9 +1,8 @@
 use std::collections::{HashMap, hash_map::Entry};
-use std::cmp::min;
+use std::cmp;
 use std::fmt;
 use rand::seq::SliceRandom;
 use by_address::ByAddress;
-use num_integer::binomial;
 
 
 #[derive(Debug)]
@@ -225,9 +224,9 @@ impl<'ctype> Draws<'ctype> {
 
         let total_cards = cards.count();
         // only draw up to the total number of cards
-        let n = min(n, total_cards);
+        let n = cmp::min(n, total_cards);
 
-        let prob_denom = binomial(total_cards, n);
+        let prob_denom = num_integer::binomial(total_cards, n);
 
         Self {
             prob_denom_recip: 1.0 / (prob_denom as f64),
@@ -251,7 +250,7 @@ impl<'ctype> Draws<'ctype> {
         while self.index >= 0 && {
             let state = &mut self.states[self.index as usize];
             state.num_drawn += 1;
-            state.num_drawn > min(state.n_remaining, state.num_in_deck)
+            state.num_drawn > cmp::min(state.n_remaining, state.num_in_deck)
         } {
             // tried every number of this type of card; "return" up a level
             self.index -= 1;
@@ -289,7 +288,7 @@ impl<'ctype> Iterator for Draws<'ctype> {
 
                     // note: these binomial coefficients could be computed incrementally
                     // a la dynamic programming, which may(?) be faster in many(?) cases
-                    let b = binomial(state.num_in_deck, state.num_drawn);
+                    let b = num_integer::binomial(state.num_in_deck, state.num_drawn);
                     prob_numerator *= b as f64;
                 }
                 for state in &self.states[i+1..] {
