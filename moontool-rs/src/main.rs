@@ -128,6 +128,12 @@ impl<'ctype> Cards<'ctype> {
     }
 }
 
+impl<'ctype> Default for Cards<'ctype> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<'iter, 'ctype: 'iter> FromIterator<&'iter&'ctype CardType> for Cards<'ctype> {
     fn from_iter<I>(iter: I) -> Self
         where I: IntoIterator<Item = &'iter &'ctype CardType>
