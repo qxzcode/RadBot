@@ -127,7 +127,7 @@ impl<'ctype> Cards<'ctype> {
     }
 }
 
-impl<'ctype> Default for Cards<'ctype> {
+impl Default for Cards<'_> {
     fn default() -> Self {
         Self::new()
     }
@@ -196,6 +196,8 @@ impl<'ctype> Cards<'ctype> {
 /// An iterator that enumerates unique draws from a [`Cards`].
 /// See [`Cards::enumerate_draws`] for details.
 /// (Note: There may be room to optimize this.)
+#[derive(Clone)]
+#[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct Draws<'ctype> {
     /// The reciprocal of the denominator in the probability calculation.
     prob_denom_recip: f64,
@@ -205,6 +207,7 @@ pub struct Draws<'ctype> {
     index: isize,
 }
 
+#[derive(Clone)]
 struct CardTypeState<'ctype> {
     card_type: &'ctype CardType,
     num_in_deck: usize,
