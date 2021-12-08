@@ -40,7 +40,9 @@ impl<'ctype> Cards<'ctype> {
 
     /// Adds `n` of the given [`CardType`] to the [`Cards`].
     pub fn add(&mut self, card_type: &'ctype CardType, n: usize) {
-        if n == 0 { return; }  // adding 0 cards is a no-op
+        if n == 0 {
+            return; // adding 0 cards is a no-op
+        }
         self.cards.entry(ByAddress(card_type))
             .and_modify(|e| *e += n)
             .or_insert(n);
@@ -59,13 +61,15 @@ impl<'ctype> Cards<'ctype> {
     /// # Panics
     /// Panics if there are less than `n` of the given [`CardType`] in the [`Cards`].
     pub fn remove(&mut self, card_type: &'ctype CardType, n: usize) {
-        if n == 0 { return; }  // removing 0 cards is a no-op
+        if n == 0 {
+            return; // removing 0 cards is a no-op
+        }
         let entry = self.cards.entry(ByAddress(card_type));
         if let Entry::Occupied(mut o) = entry {
             let count = o.get_mut();
             if *count < n {
                 panic!("Tried to remove {} of {:?} from a Cards, but only {} present",
-                        n, card_type, *count);
+                       n, card_type, *count);
             }
             *count -= n;
             if *count == 0 {
@@ -73,7 +77,7 @@ impl<'ctype> Cards<'ctype> {
             }
         } else {
             panic!("Tried to remove {} of {:?} from a Cards, but none present",
-                    n, card_type);
+                   n, card_type);
         }
     }
 
@@ -84,7 +88,7 @@ impl<'ctype> Cards<'ctype> {
     pub fn remove_all(&mut self, card_type: &'ctype CardType) {
         if self.cards.remove(&ByAddress(card_type)).is_none() {
             panic!("Tried to remove all {:?} from a Cards, but none present",
-                    card_type);
+                   card_type);
         }
     }
 
@@ -133,9 +137,10 @@ impl Default for Cards<'_> {
     }
 }
 
-impl<'iter, 'ctype: 'iter> FromIterator<&'iter&'ctype CardType> for Cards<'ctype> {
+impl<'iter, 'ctype: 'iter> FromIterator<&'iter &'ctype CardType> for Cards<'ctype> {
     fn from_iter<I>(iter: I) -> Self
-        where I: IntoIterator<Item = &'iter &'ctype CardType>
+    where
+        I: IntoIterator<Item = &'iter &'ctype CardType>,
     {
         let mut cards = Self::new();
         for card_type in iter {
@@ -147,7 +152,8 @@ impl<'iter, 'ctype: 'iter> FromIterator<&'iter&'ctype CardType> for Cards<'ctype
 
 impl<'ctype> FromIterator<&'ctype CardType> for Cards<'ctype> {
     fn from_iter<I>(iter: I) -> Self
-        where I: IntoIterator<Item = &'ctype CardType>
+    where
+        I: IntoIterator<Item = &'ctype CardType>,
     {
         let mut cards = Self::new();
         for card_type in iter {
