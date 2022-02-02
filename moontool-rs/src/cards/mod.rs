@@ -1,36 +1,20 @@
 mod draws;
 
 use std::collections::{HashMap, hash_map::Entry};
-use std::fmt;
 use rand::seq::SliceRandom;
 use by_address::ByAddress;
 
 use self::draws::Draws;
 
 
-#[derive(Debug)]
-pub struct CardType {
-    /// A function that implements the behavior of playing this card.
-    /// Returns the completion probability after playing this card
-    /// when starting in the given state.
-    pub play_func: fn() -> f64,
-
-    /// The letter used to represent this card type.
-    pub letter: char,
-
-    /// The ANSI color escape code for console printing.
-    pub color: &'static str,
-}
-
-
 /// A multiset of cards.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Cards<'ctype> {
+#[derive(Debug, PartialEq, Eq)]
+pub struct Cards<'ctype, CardType: ?Sized> {
     /// A mapping from card types to the number of cards of that type.
     cards: HashMap<ByAddress<&'ctype CardType>, usize>,
 }
 
-impl<'ctype> Cards<'ctype> {
+impl<'ctype, CardType: ?Sized> Cards<'ctype, CardType> {
     /// Creates a new, empty [`Cards`].
     pub fn new() -> Self {
         Self { cards: HashMap::new() }
@@ -71,16 +55,14 @@ impl<'ctype> Cards<'ctype> {
         if let Entry::Occupied(mut o) = entry {
             let count = o.get_mut();
             if *count < n {
-                panic!("Tried to remove {} of {:?} from a Cards, but only {} present",
-                       n, card_type, *count);
+                panic!("Tried to remove {n} of a card type from a Cards, but only {count} present");
             }
             *count -= n;
             if *count == 0 {
                 o.remove();
             }
         } else {
-            panic!("Tried to remove {} of {:?} from a Cards, but none present",
-                   n, card_type);
+            panic!("Tried to remove {n} of a card type from a Cards, but none present");
         }
     }
 
@@ -90,8 +72,7 @@ impl<'ctype> Cards<'ctype> {
     /// Panics if the [`CardType`] is not present in the [`Cards`].
     pub fn remove_all(&mut self, card_type: &'ctype CardType) {
         if self.cards.remove(&ByAddress(card_type)).is_none() {
-            panic!("Tried to remove all {:?} from a Cards, but none present",
-                   card_type);
+            panic!("Tried to remove all cards of a type from a Cards, but none present");
         }
     }
 
@@ -112,7 +93,7 @@ impl<'ctype> Cards<'ctype> {
 
     /// Draws (up to) `n` random cards from this [`Cards`].
     /// Returns the updated [`Cards`], and the drawn [`Cards`].
-    pub fn draw_random(&self, n: usize) -> (Cards<'ctype>, Cards<'ctype>) {
+    pub fn draw_random(&self, n: usize) -> (Cards<'ctype, CardType>, Cards<'ctype, CardType>) {
         // create a list of all the cards, with repetitions
         let mut card_list = Vec::new();
         for (card_type, count) in &self.cards {
@@ -146,18 +127,32 @@ impl<'ctype> Cards<'ctype> {
     ///     println!("{}, {}, {}", left, drawn, prob);
     /// }
     /// ```
-    pub fn enumerate_draws(&self, n: usize) -> Draws<'ctype> {
+    pub fn enumerate_draws(&self, n: usize) -> Draws<'ctype, CardType> {
         Draws::new(self, n)
+    }
+
+    /// Returns an iterator over the unique card types in the [`Cards`].
+    /// The order of the types is not defined.
+    pub fn iter_unique(&self) -> impl Iterator<Item = &'ctype CardType> + '_ {
+        self.cards.keys().map(|key| key.0)
     }
 }
 
-impl Default for Cards<'_> {
+impl<CardType: ?Sized> Clone for Cards<'_, CardType> {
+    fn clone(&self) -> Self {
+        Self { cards: self.cards.clone() }
+    }
+}
+
+impl<CardType: ?Sized> Default for Cards<'_, CardType> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<'iter, 'ctype: 'iter> FromIterator<&'iter &'ctype CardType> for Cards<'ctype> {
+impl<'iter, 'ctype: 'iter, CardType: ?Sized> FromIterator<&'iter &'ctype CardType>
+    for Cards<'ctype, CardType>
+{
     fn from_iter<I>(iter: I) -> Self
     where
         I: IntoIterator<Item = &'iter &'ctype CardType>,
@@ -170,7 +165,7 @@ impl<'iter, 'ctype: 'iter> FromIterator<&'iter &'ctype CardType> for Cards<'ctyp
     }
 }
 
-impl<'ctype> FromIterator<&'ctype CardType> for Cards<'ctype> {
+impl<'ctype, CardType: ?Sized> FromIterator<&'ctype CardType> for Cards<'ctype, CardType> {
     fn from_iter<I>(iter: I) -> Self
     where
         I: IntoIterator<Item = &'ctype CardType>,
@@ -180,21 +175,5 @@ impl<'ctype> FromIterator<&'ctype CardType> for Cards<'ctype> {
             cards.add_one(card_type);
         }
         cards
-    }
-}
-
-impl fmt::Display for Cards<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.is_empty() {
-            write!(f, "\x1b[90m<no cards>\x1b[0m")
-        } else {
-            for (card_type, &count) in &self.cards {
-                write!(f, "\x1b[{}m", card_type.color)?;
-                for _ in 0..count {
-                    write!(f, "{}", card_type.letter)?;
-                }
-            }
-            write!(f, "\x1b[0m")
-        }
     }
 }

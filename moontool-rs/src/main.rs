@@ -1,33 +1,28 @@
 mod cards;
 mod radlands;
 
-use crate::cards::{CardType, Cards};
+use radlands::*;
+
+struct HumanController {
+    label: &'static str,
+}
+
+impl PlayerController for HumanController {
+    fn choose_action<'ctype>(&mut self, actions: &[Action<'ctype>]) -> Action<'ctype> {
+        todo!()
+    }
+}
 
 fn main() {
-    println!("Hello, world!");
-    let n_draw = 3;
+    println!("Radlands AI, version {}\n", env!("CARGO_PKG_VERSION"));
 
-    println!("Empty:");
-    for (deck, drawn, prob) in Cards::new().enumerate_draws(n_draw) {
-        println!("{deck}, {drawn}, {prob}");
-    }
+    let camp_types = camps::get_camp_types();
+    let person_types = people::get_person_types();
 
-    println!("Full:");
-    let a = CardType { play_func: || 1.0, letter: 'R', color: "96" };
-    let cards = Cards::from_iter(&[
-        &a,
-        &a,
-        &CardType { play_func: || 1.0, letter: 'T', color: "93" },
-        &CardType { play_func: || 1.0, letter: 'S', color: "92" },
-    ]);
-    for (deck, drawn, prob) in cards.enumerate_draws(n_draw) {
-        println!("{deck}, {drawn}, {prob}");
-    }
+    let hc1 = HumanController { label: "Human 1" };
+    let hc2 = HumanController { label: "Human 2" };
+    let mut game_state = GameState::new(&camp_types, Box::new(hc1), Box::new(hc2));
 
-    println!("Drop:");
-    let iter = cards.enumerate_draws(n_draw);
-    std::mem::drop(cards);
-    for (deck, drawn, prob) in iter {
-        println!("{deck}, {drawn}, {prob}");
-    }
+    game_state.do_turn(true);
+    game_state.do_turn(false);
 }
