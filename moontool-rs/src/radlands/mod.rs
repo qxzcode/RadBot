@@ -24,12 +24,17 @@ pub struct GameState<'ctype> {
 impl<'g, 'ctype: 'g> GameState<'ctype> {
     pub fn new(
         camp_types: &'ctype [CampType],
+        person_types: &'ctype [PersonType],
         player1: Box<dyn PlayerController>,
         player2: Box<dyn PlayerController>,
     ) -> Self {
         // populate the deck and shuffle it
-        let mut deck = Vec::new();
-        // TODO
+        let mut deck = Vec::<&dyn PersonOrEventType>::new();
+        for person_type in person_types {
+            for _ in 0..person_type.num_in_deck() {
+                deck.push(person_type);
+            }
+        }
         deck.shuffle(&mut thread_rng());
 
         // pick 3 camps for each player at random
@@ -39,12 +44,9 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         let p1_camps = &chosen_camps[..3];
         let p2_camps = &chosen_camps[3..];
 
-        // draw each player's starting hand
-        // TODO
-
         GameState {
-            player1: Player::new(player1, p1_camps),
-            player2: Player::new(player2, p2_camps),
+            player1: Player::new(player1, p1_camps, &mut deck),
+            player2: Player::new(player2, p2_camps, &mut deck),
             deck,
             discard: Vec::new(),
             is_player1_turn: thread_rng().gen(), // randomly pick which player goes first
@@ -233,6 +235,7 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
     }
 }
 
+/// Represents a player with a controller and game state.
 pub struct Player<'ctype> {
     /// The controller that chooses actions for this player.
     controller: Box<dyn PlayerController>,
@@ -242,10 +245,16 @@ pub struct Player<'ctype> {
 }
 
 impl<'ctype> Player<'ctype> {
-    pub fn new(controller: Box<dyn PlayerController>, camps: &[&'ctype CampType]) -> Self {
+    /// Creates a new `Player` with the given camps, drawing an initial hand
+    /// from the given deck.
+    pub fn new(
+        controller: Box<dyn PlayerController>,
+        camps: &[&'ctype CampType],
+        deck: &mut Vec<&'ctype (dyn PersonOrEventType + 'ctype)>,
+    ) -> Self {
         Player {
             controller,
-            state: PlayerState::new(camps),
+            state: PlayerState::new(camps, deck),
         }
     }
 }
@@ -254,6 +263,7 @@ pub trait PlayerController {
     fn choose_action<'ctype>(&mut self, actions: &[Action<'ctype>]) -> Action<'ctype>;
 }
 
+/// Represents the state of a player's board and hand.
 struct PlayerState<'ctype> {
     /// The cards in the player's hand, not including Water Silo.
     hand: Cards<'ctype, dyn PersonOrEventType + 'ctype>,
@@ -271,11 +281,22 @@ struct PlayerState<'ctype> {
 }
 
 impl<'g, 'ctype: 'g> PlayerState<'ctype> {
-    pub fn new(camps: &[&'ctype CampType]) -> Self {
-        // TODO: pass in starting hand cards
+    /// Creates a new `PlayerState` with the given camps, drawing an initial
+    /// hand from the given deck.
+    pub fn new(
+        camps: &[&'ctype CampType],
+        deck: &mut Vec<&'ctype (dyn PersonOrEventType + 'ctype)>,
+    ) -> Self {
+        // determine the number of starting cards from the set of camps
         assert_eq!(camps.len(), 3);
+        let hand_size: usize = camps.iter().map(|c| c.num_initial_cards as usize).sum();
+
+        // draw the top hand_size cards from the deck
+        let deck_cut_index = deck.len() - hand_size;
+        let hand = Cards::from_iter(deck.drain(deck_cut_index..));
+
         PlayerState {
-            hand: Cards::new(),
+            hand,
             has_water_silo: false,
             columns: [
                 CardColumn::new(camps[0]),
@@ -414,7 +435,7 @@ pub trait PersonOrEventType {
     fn cost(&self) -> u32;
 }
 
-/// Trait for a type of person card.
+/// A type of person card.
 pub struct PersonType {
     /// The person's name.
     pub name: &'static str,
