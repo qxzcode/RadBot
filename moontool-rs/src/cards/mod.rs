@@ -70,6 +70,7 @@ impl<'ctype, CardType: ?Sized> Cards<'ctype, CardType> {
     ///
     /// # Panics
     /// Panics if the [`CardType`] is not present in the [`Cards`].
+    #[allow(dead_code)]
     pub fn remove_all(&mut self, card_type: &'ctype CardType) {
         if self.cards.remove(&ByAddress(card_type)).is_none() {
             panic!("Tried to remove all cards of a type from a Cards, but none present");
@@ -77,22 +78,26 @@ impl<'ctype, CardType: ?Sized> Cards<'ctype, CardType> {
     }
 
     /// Returns the number of cards in the [`Cards`], counting duplicates.
+    #[allow(dead_code)]
     pub fn count(&self) -> usize {
         self.cards.values().sum()
     }
 
     /// Returns the number of unique [`CardType`]s in the [`Cards`].
+    #[allow(dead_code)]
     pub fn count_unique(&self) -> usize {
         self.cards.len()
     }
 
     /// Returns `true` if the [`Cards`] contains no cards.
+    #[allow(dead_code)]
     pub fn is_empty(&self) -> bool {
         self.cards.is_empty()
     }
 
     /// Draws (up to) `n` random cards from this [`Cards`].
     /// Returns the updated [`Cards`], and the drawn [`Cards`].
+    #[allow(dead_code)]
     pub fn draw_random(&self, n: usize) -> (Cards<'ctype, CardType>, Cards<'ctype, CardType>) {
         // create a list of all the cards, with repetitions
         let mut card_list = Vec::new();
@@ -127,6 +132,7 @@ impl<'ctype, CardType: ?Sized> Cards<'ctype, CardType> {
     ///     println!("{}, {}, {}", left, drawn, prob);
     /// }
     /// ```
+    #[allow(dead_code)]
     pub fn enumerate_draws(&self, n: usize) -> Draws<'ctype, CardType> {
         Draws::new(self, n)
     }
