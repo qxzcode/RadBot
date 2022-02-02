@@ -22,14 +22,20 @@ pub struct GameState<'ctype> {
 }
 
 impl<'g, 'ctype: 'g> GameState<'ctype> {
-    pub fn new(camp_types: &'ctype [CampType], player1: Box<dyn PlayerController>, player2: Box<dyn PlayerController>) -> Self {
+    pub fn new(
+        camp_types: &'ctype [CampType],
+        player1: Box<dyn PlayerController>,
+        player2: Box<dyn PlayerController>,
+    ) -> Self {
         // populate the deck and shuffle it
         let mut deck = Vec::new();
         // TODO
         deck.shuffle(&mut thread_rng());
 
         // pick 3 camps for each player at random
-        let chosen_camps = camp_types.choose_multiple(&mut thread_rng(), 6).collect_vec();
+        let chosen_camps = camp_types
+            .choose_multiple(&mut thread_rng(), 6)
+            .collect_vec();
         let p1_camps = &chosen_camps[..3];
         let p2_camps = &chosen_camps[3..];
 
@@ -41,7 +47,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
             player2: Player::new(player2, p2_camps),
             deck,
             discard: Vec::new(),
-            is_player1_turn: thread_rng().gen(),  // randomly pick which player goes first
+            is_player1_turn: thread_rng().gen(), // randomly pick which player goes first
             cur_player_water: 0,
         }
     }
@@ -102,7 +108,10 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
     /// Panics if the player does not have enough water.
     pub fn spend_water(&mut self, amount: u32) {
         if self.cur_player_water < amount {
-            panic!("Tried to spend {amount} water, but only {} available", self.cur_player_water);
+            panic!(
+                "Tried to spend {amount} water, but only {} available",
+                self.cur_player_water
+            );
         }
         self.cur_player_water -= amount;
     }
@@ -295,8 +304,17 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
 
         // actions to use an ability
         for person in self.columns[0].people() {
-            if let Person::NonPunk(NonPunk {person_type, is_injured}) = person {
-                actions.push(Action::UseAbility(/*TODO*/));
+            match person {
+                Person::Punk(_) => {
+                    // punks don't have abilities
+                }
+                Person::NonPunk(NonPunk {
+                    person_type,
+                    is_injured,
+                }) => {
+                    // TODO: check if they're ready...
+                    actions.push(Action::UseAbility(/*TODO*/));
+                }
             }
         }
 
@@ -409,7 +427,6 @@ pub struct PersonType {
 
     /// The water cost to play this person.
     pub cost: u32,
-
     // TODO: abilities
 }
 
@@ -499,25 +516,25 @@ impl IconEffect {
         match *self {
             IconEffect::Damage => {
                 todo!();
-            },
+            }
             IconEffect::Injure => {
                 todo!();
-            },
+            }
             IconEffect::Restore => {
                 todo!();
-            },
+            }
             IconEffect::Draw => {
                 game_state.draw_card();
-            },
+            }
             IconEffect::Water => {
                 game_state.gain_water();
-            },
+            }
             IconEffect::GainPunk => {
                 game_state.gain_punk();
-            },
+            }
             IconEffect::Raid => {
                 game_state.raid();
-            },
+            }
         }
     }
 }

@@ -1,4 +1,4 @@
-use super::{PersonType, IconEffect};
+use super::{IconEffect, PersonType};
 
 pub fn get_person_types() -> Vec<PersonType> {
     vec![
