@@ -4,6 +4,7 @@ pub mod people;
 use itertools::Itertools;
 use rand::seq::SliceRandom;
 use rand::{thread_rng, Rng};
+use std::fmt;
 
 use crate::cards::Cards;
 
@@ -90,10 +91,6 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
         // finally, switch whose turn it is
         self.is_player1_turn = !self.is_player1_turn;
-    }
-
-    fn perform_action(action: Action<'ctype>, game_state: &'g mut GameState) {
-        todo!();
     }
 
     /// Draws a card from the deck and puts it in the current player's hand.
@@ -195,15 +192,15 @@ pub enum Action<'ctype> {
 impl<'g, 'ctype: 'g> Action<'ctype> {
     /// Performs the action on the given game state.
     /// Returns whether the player's turn should end after this action.
-    pub fn perform(self, game_state: &'g mut GameState<'ctype>) -> bool {
-        match self {
+    pub fn perform(&self, game_state: &'g mut GameState<'ctype>) -> bool {
+        match *self {
             Action::PlayCard(card) => {
                 // pay the card's cost and remove it from the player's hand
                 game_state.spend_water(card.cost());
                 game_state.cur_player_mut().state.hand.remove_one(card);
 
                 // determine where to place the card
-                // TODO
+                todo!();
                 // let person = Person::new_non_punk(card);
                 // game_state.cur_player().state.columns[0].people.push(person);
                 false
@@ -228,9 +225,22 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
                 false
             },
             Action::EndTurn => {
+                // take Water Silo if possible, then end the turn
                 game_state.cur_player_mut().state.has_water_silo = game_state.cur_player_water >= 1;
                 true
             },
+        }
+    }
+}
+
+impl<'ctype> fmt::Display for Action<'ctype> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Action::PlayCard(card) => write!(f, "Play {} (costs {} water)", card.name(), card.cost()),
+            Action::DrawCard => write!(f, "Draw a card (costs 2 water)"),
+            Action::JunkCard(card) => write!(f, "Junk {}", card.name()),
+            Action::UseAbility(/*TODO*/) => write!(f, "Use ability: [TODO]"),
+            Action::EndTurn => write!(f, "End turn, taking Water Silo if possible"),
         }
     }
 }
@@ -260,7 +270,7 @@ impl<'ctype> Player<'ctype> {
 }
 
 pub trait PlayerController {
-    fn choose_action<'ctype>(&mut self, actions: &[Action<'ctype>]) -> Action<'ctype>;
+    fn choose_action<'a, 'ctype>(&mut self, actions: &'a [Action<'ctype>]) -> &'a Action<'ctype>;
 }
 
 /// Represents the state of a player's board and hand.
