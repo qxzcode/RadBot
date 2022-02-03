@@ -1,6 +1,8 @@
 mod cards;
 mod radlands;
 
+use rand::seq::SliceRandom;
+use rand::{thread_rng, Rng};
 use std::io;
 use std::io::Write;
 
@@ -37,6 +39,19 @@ impl PlayerController for HumanController {
     }
 }
 
+struct RandomController;
+
+impl PlayerController for RandomController {
+    fn choose_action<'a, 'ctype>(&mut self, actions: &'a [Action<'ctype>]) -> &'a Action<'ctype> {
+        let mut rng = thread_rng();
+        let chosen_action = actions
+            .choose(&mut rng)
+            .expect("choose_action called with empty actions list");
+        println!("RandomController chose action: {chosen_action}");
+        chosen_action
+    }
+}
+
 fn main() {
     println!("AutoRad, version {}\n", env!("CARGO_PKG_VERSION"));
 
@@ -45,6 +60,8 @@ fn main() {
 
     let hc1 = HumanController { label: "Human 1" };
     let hc2 = HumanController { label: "Human 2" };
+    let hc1 = RandomController;
+    let hc2 = RandomController;
     let mut game_state = GameState::new(&camp_types, &person_types, Box::new(hc1), Box::new(hc2));
 
     for turn_num in 1.. {
