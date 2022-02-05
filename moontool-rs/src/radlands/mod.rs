@@ -78,7 +78,10 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
             let actions = self.cur_player().state.actions(self);
 
             // ask the player what to do
-            let action = self.cur_player_mut().controller.choose_action(&actions);
+            let action = self
+                .cur_player_mut()
+                .controller
+                .choose_action(&self, &actions);
 
             // perform the action
             if action.perform(self) {
@@ -168,6 +171,18 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         } else {
             &mut self.player1
         }
+    }
+}
+
+impl fmt::Display for GameState<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "Player 1:")?;
+        writeln!(f, "{}", self.player1.state)?;
+        writeln!(f, "Player 2:")?;
+        writeln!(f, "{}", self.player2.state)?;
+        writeln!(f, "{} cards in deck", self.deck.len())?;
+        write!(f, "{} cards in discard", self.discard.len())?;
+        Ok(())
     }
 }
 
@@ -270,7 +285,11 @@ impl<'ctype> Player<'ctype> {
 }
 
 pub trait PlayerController {
-    fn choose_action<'a, 'ctype>(&mut self, actions: &'a [Action<'ctype>]) -> &'a Action<'ctype>;
+    fn choose_action<'a, 'g, 'ctype: 'g>(
+        &mut self,
+        game_state: &'g GameState<'ctype>,
+        actions: &'a [Action<'ctype>],
+    ) -> &'a Action<'ctype>;
 }
 
 /// Represents the state of a player's board and hand.
@@ -329,6 +348,7 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
         }
 
         // action to pay 2 water to draw a card
+        // TODO: limit to 1 use per turn
         if game.cur_player_water >= 2 {
             actions.push(Action::DrawCard);
         }
@@ -356,13 +376,116 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
     }
 }
 
+impl fmt::Display for PlayerState<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "Hand:")?;
+        for (card_type, count) in self.hand.iter() {
+            write!(f, "  {}", card_type.name())?;
+            if count > 1 {
+                writeln!(f, " (x{count})")?;
+            } else {
+                writeln!(f)?;
+            }
+        }
+        if self.has_water_silo {
+            writeln!(f, "  \x1b[96mWater Silo\x1b[0m")?;
+        } else if self.hand.is_empty() {
+            writeln!(f, "  \x1b[90m<none>\x1b[0m")?;
+        }
+
+        struct ColoredString<'a> {
+            string: &'a str,
+            color: &'a str, // ANSI color code
+        }
+
+        impl fmt::Display for ColoredString<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "\x1b[{}m{}\x1b[0m", self.color, self.string)
+            }
+        }
+
+        impl ColoredString<'_> {
+            fn write_centered(&self, f: &mut fmt::Formatter, width: usize) -> fmt::Result {
+                if self.string.len() > width {
+                    panic!("String is longer than centering width");
+                }
+                let initial_padding = (width - self.string.len()) / 2;
+                for _ in 0..initial_padding {
+                    write!(f, " ")?;
+                }
+                write!(f, "\x1b[{}m{}\x1b[0m", self.color, self.string)?;
+                for _ in 0..(width - self.string.len() - initial_padding) {
+                    write!(f, " ")?;
+                }
+                Ok(())
+            }
+        }
+
+        fn get_column_strings(col: &CardColumn<'_>) -> Vec<ColoredString<'static>> {
+            let mut strings = vec![ColoredString {
+                string: col.camp.camp_type.name,
+                color: "94",
+            }];
+            for person_slot in &col.person_slots {
+                strings.push(match *person_slot {
+                    Some(Person::Punk(_)) => ColoredString {
+                        string: "Punk",
+                        color: "95",
+                    },
+                    Some(Person::NonPunk(NonPunk {
+                        person_type,
+                        is_injured,
+                    })) => ColoredString {
+                        string: person_type.name,
+                        color: if is_injured { "33" } else { "32" },
+                    },
+                    None => ColoredString {
+                        string: "<none>",
+                        color: "90",
+                    },
+                });
+            }
+            strings.reverse(); // so that the top is first
+            strings
+        }
+
+        writeln!(f, "Columns:")?;
+        let column_string_lists = self.columns.iter().map(get_column_strings).collect_vec();
+        let column_widths = column_string_lists
+            .iter()
+            .map(|column_strings| column_strings.iter().map(|s| s.string.len()).max().unwrap() + 4)
+            .collect_vec();
+        for row_index in 0..3 {
+            write!(f, "  ")?;
+            for col_index in 0..3 {
+                let column_string = &column_string_lists[col_index][row_index];
+                let width = column_widths[col_index];
+                column_string.write_centered(f, width)?;
+            }
+            writeln!(f)?;
+        }
+
+        writeln!(f, "Events:")?;
+        for (i, event) in self.events.iter().enumerate() {
+            write!(f, "  [{}]  ", i + 1)?;
+            if let Some(event) = event {
+                writeln!(f, "{}", event.name())?;
+            } else {
+                writeln!(f, "\x1b[90m<none>\x1b[0m")?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 struct CardColumn<'ctype> {
     /// The column's camp.
     camp: Camp<'ctype>,
 
-    /// The people in the column.
-    /// Maximum size is 2; the last element is the unprotected one.
-    people: [Option<Person<'ctype>>; 2],
+    /// The people slots in the column.
+    /// The first slot (index 0) is the one directly in front of the camp.
+    person_slots: [Option<Person<'ctype>>; 2],
 }
 
 impl<'ctype> CardColumn<'ctype> {
@@ -373,13 +496,15 @@ impl<'ctype> CardColumn<'ctype> {
                 camp_type,
                 status: CampStatus::Undamaged,
             },
-            people: [None, None],
+            person_slots: [None, None],
         }
     }
 
     /// Returns an iterator over the people in the column.
     pub fn people(&self) -> impl Iterator<Item = &Person<'ctype>> {
-        self.people.iter().filter_map(|person| person.as_ref())
+        self.person_slots
+            .iter()
+            .filter_map(|person| person.as_ref())
     }
 }
 

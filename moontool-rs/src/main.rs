@@ -2,7 +2,7 @@ mod cards;
 mod radlands;
 
 use rand::seq::SliceRandom;
-use rand::{thread_rng, Rng};
+use rand::thread_rng;
 use std::io;
 use std::io::Write;
 
@@ -14,8 +14,15 @@ struct HumanController {
 }
 
 impl PlayerController for HumanController {
-    fn choose_action<'a, 'ctype>(&mut self, actions: &'a [Action<'ctype>]) -> &'a Action<'ctype> {
-        println!("{}'s turn: {} actions available", self.label, actions.len());
+    fn choose_action<'a, 'g, 'ctype: 'g>(
+        &mut self,
+        game_state: &'g GameState<'ctype>,
+        actions: &'a [Action<'ctype>],
+    ) -> &'a Action<'ctype> {
+        print!("\x1b[2J\x1b[H");
+        println!("{}\n", game_state);
+
+        println!("{} - choose an action:", self.label);
         for (i, action) in actions.iter().enumerate() {
             println!("  ({})  {action}", i + 1);
         }
@@ -42,7 +49,11 @@ impl PlayerController for HumanController {
 struct RandomController;
 
 impl PlayerController for RandomController {
-    fn choose_action<'a, 'ctype>(&mut self, actions: &'a [Action<'ctype>]) -> &'a Action<'ctype> {
+    fn choose_action<'a, 'g, 'ctype: 'g>(
+        &mut self,
+        game_state: &'g GameState<'ctype>,
+        actions: &'a [Action<'ctype>],
+    ) -> &'a Action<'ctype> {
         let mut rng = thread_rng();
         let chosen_action = actions
             .choose(&mut rng)
@@ -60,8 +71,8 @@ fn main() {
 
     let hc1 = HumanController { label: "Human 1" };
     let hc2 = HumanController { label: "Human 2" };
-    let hc1 = RandomController;
-    let hc2 = RandomController;
+    // let hc1 = RandomController;
+    // let hc2 = RandomController;
     let mut game_state = GameState::new(&camp_types, &person_types, Box::new(hc1), Box::new(hc2));
 
     for turn_num in 1.. {

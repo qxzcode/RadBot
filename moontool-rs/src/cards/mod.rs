@@ -142,6 +142,12 @@ impl<'ctype, CardType: ?Sized> Cards<'ctype, CardType> {
     pub fn iter_unique(&self) -> impl Iterator<Item = &'ctype CardType> + '_ {
         self.cards.keys().map(|key| key.0)
     }
+
+    /// Returns an iterator over (`CardType`, count) pairs.
+    /// The order is not defined.
+    pub fn iter(&self) -> impl Iterator<Item = (&'ctype CardType, usize)> + '_ {
+        self.cards.iter().map(|(key, count)| (key.0, *count))
+    }
 }
 
 impl<CardType: ?Sized> Clone for Cards<'_, CardType> {
