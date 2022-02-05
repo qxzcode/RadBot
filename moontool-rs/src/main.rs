@@ -15,7 +15,7 @@ struct HumanController {
 
 impl PlayerController for HumanController {
     fn choose_action<'a, 'g, 'ctype: 'g>(
-        &mut self,
+        &self,
         game_state: &'g GameState<'ctype>,
         actions: &'a [Action<'ctype>],
     ) -> &'a Action<'ctype> {
@@ -50,8 +50,8 @@ struct RandomController;
 
 impl PlayerController for RandomController {
     fn choose_action<'a, 'g, 'ctype: 'g>(
-        &mut self,
-        game_state: &'g GameState<'ctype>,
+        &self,
+        _game_state: &'g GameState<'ctype>,
         actions: &'a [Action<'ctype>],
     ) -> &'a Action<'ctype> {
         let mut rng = thread_rng();
@@ -73,10 +73,10 @@ fn main() {
     let hc2 = HumanController { label: "Human 2" };
     // let hc1 = RandomController;
     // let hc2 = RandomController;
-    let mut game_state = GameState::new(&camp_types, &person_types, Box::new(hc1), Box::new(hc2));
+    let mut game_state = GameState::new(&camp_types, &person_types);
 
     for turn_num in 1.. {
         println!("\nTurn {}\n", turn_num);
-        game_state.do_turn(turn_num == 1);
+        game_state.do_turn(&hc1, &hc2, turn_num == 1);
     }
 }

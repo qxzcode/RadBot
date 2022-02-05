@@ -9,8 +9,8 @@ use std::fmt;
 use crate::cards::Cards;
 
 pub struct GameState<'ctype> {
-    player1: Player<'ctype>,
-    player2: Player<'ctype>,
+    player1: PlayerState<'ctype>,
+    player2: PlayerState<'ctype>,
 
     deck: Vec<&'ctype (dyn PersonOrEventType + 'ctype)>,
     discard: Vec<&'ctype (dyn PersonOrEventType + 'ctype)>,
@@ -23,12 +23,7 @@ pub struct GameState<'ctype> {
 }
 
 impl<'g, 'ctype: 'g> GameState<'ctype> {
-    pub fn new(
-        camp_types: &'ctype [CampType],
-        person_types: &'ctype [PersonType],
-        player1: Box<dyn PlayerController>,
-        player2: Box<dyn PlayerController>,
-    ) -> Self {
+    pub fn new(camp_types: &'ctype [CampType], person_types: &'ctype [PersonType]) -> Self {
         // populate the deck and shuffle it
         let mut deck = Vec::<&dyn PersonOrEventType>::new();
         for person_type in person_types {
@@ -46,8 +41,8 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         let p2_camps = &chosen_camps[3..];
 
         GameState {
-            player1: Player::new(player1, p1_camps, &mut deck),
-            player2: Player::new(player2, p2_camps, &mut deck),
+            player1: PlayerState::new(p1_camps, &mut deck),
+            player2: PlayerState::new(p2_camps, &mut deck),
             deck,
             discard: Vec::new(),
             is_player1_turn: thread_rng().gen(), // randomly pick which player goes first
@@ -55,18 +50,29 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         }
     }
 
-    pub fn do_turn(&'g mut self, is_first_turn: bool) {
+    pub fn do_turn(
+        &'g mut self,
+        p1_controller: &dyn PlayerController,
+        p2_controller: &dyn PlayerController,
+        is_first_turn: bool,
+    ) {
+        let cur_controller = if self.is_player1_turn {
+            p1_controller
+        } else {
+            p2_controller
+        };
+
         // resolve/advance events
-        if let Some(event) = self.cur_player_mut().state.events[0].take() {
+        if let Some(event) = self.cur_player_mut().events[0].take() {
             event.resolve(self);
         }
-        self.cur_player_mut().state.events.rotate_left(1);
+        self.cur_player_mut().events.rotate_left(1);
 
         // replenish water
         self.cur_player_water = if is_first_turn { 1 } else { 3 };
-        if self.cur_player_mut().state.has_water_silo {
+        if self.cur_player().has_water_silo {
             self.cur_player_water += 1;
-            self.cur_player_mut().state.has_water_silo = false;
+            self.cur_player_mut().has_water_silo = false;
         }
 
         // draw a card
@@ -75,13 +81,10 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         // perform actions
         loop {
             // get all the possible actions
-            let actions = self.cur_player().state.actions(self);
+            let actions = self.cur_player().actions(self);
 
             // ask the player what to do
-            let action = self
-                .cur_player_mut()
-                .controller
-                .choose_action(&self, &actions);
+            let action = cur_controller.choose_action(&self, &actions);
 
             // perform the action
             if action.perform(self) {
@@ -103,7 +106,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
             todo!();
         }
         let card = self.deck.pop().unwrap();
-        self.cur_player_mut().state.hand.add_one(card);
+        self.cur_player_mut().hand.add_one(card);
     }
 
     /// Subtracts the given amount of water from the current player's pool.
@@ -130,8 +133,8 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
     /// Plays or advances the current player's Raiders event.
     pub fn raid(&'g mut self) {
-        for i in 0..self.cur_player_mut().state.events.len() {
-            if let Some(event) = self.cur_player_mut().state.events[i] {
+        for i in 0..self.cur_player().events.len() {
+            if let Some(event) = self.cur_player().events[i] {
                 if let Some(raiders) = event.as_raiders() {
                     // found the raiders event in the event queue
                     if i == 0 {
@@ -139,7 +142,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                         raiders.resolve(self);
                     } else {
                         // it's not the first event, so advance it if possible
-                        let events = &mut self.cur_player_mut().state.events;
+                        let events = &mut self.cur_player_mut().events;
                         if events[i - 1].is_none() {
                             events[i - 1] = events[i].take();
                         }
@@ -149,7 +152,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         }
     }
 
-    pub fn cur_player_mut(&'g mut self) -> &'g mut Player<'ctype> {
+    pub fn cur_player_mut(&'g mut self) -> &'g mut PlayerState<'ctype> {
         if self.is_player1_turn {
             &mut self.player1
         } else {
@@ -157,7 +160,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         }
     }
 
-    pub fn cur_player(&'g self) -> &'g Player<'ctype> {
+    pub fn cur_player(&'g self) -> &'g PlayerState<'ctype> {
         if self.is_player1_turn {
             &self.player1
         } else {
@@ -165,7 +168,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         }
     }
 
-    pub fn other_player_mut(&'g mut self) -> &'g mut Player<'ctype> {
+    pub fn other_player_mut(&'g mut self) -> &'g mut PlayerState<'ctype> {
         if self.is_player1_turn {
             &mut self.player2
         } else {
@@ -177,9 +180,9 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 impl fmt::Display for GameState<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "Player 1:")?;
-        writeln!(f, "{}", self.player1.state)?;
+        writeln!(f, "{}", self.player1)?;
         writeln!(f, "Player 2:")?;
-        writeln!(f, "{}", self.player2.state)?;
+        writeln!(f, "{}", self.player2)?;
         writeln!(f, "{} cards in deck", self.deck.len())?;
         write!(f, "{} cards in discard", self.discard.len())?;
         Ok(())
@@ -212,12 +215,12 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
             Action::PlayCard(card) => {
                 // pay the card's cost and remove it from the player's hand
                 game_state.spend_water(card.cost());
-                game_state.cur_player_mut().state.hand.remove_one(card);
+                game_state.cur_player_mut().hand.remove_one(card);
 
                 // determine where to place the card
                 todo!();
                 // let person = Person::new_non_punk(card);
-                // game_state.cur_player().state.columns[0].people.push(person);
+                // game_state.cur_player().columns[0].people.push(person);
                 false
             },
             Action::DrawCard => {
@@ -227,7 +230,7 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
             },
             Action::JunkCard(card) => {
                 // move the card to the discard pile
-                game_state.cur_player_mut().state.hand.remove_one(card);
+                game_state.cur_player_mut().hand.remove_one(card);
                 game_state.discard.push(card);
 
                 // perform the card's junk effect
@@ -241,7 +244,7 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
             },
             Action::EndTurn => {
                 // take Water Silo if possible, then end the turn
-                game_state.cur_player_mut().state.has_water_silo = game_state.cur_player_water >= 1;
+                game_state.cur_player_mut().has_water_silo = game_state.cur_player_water >= 1;
                 true
             },
         }
@@ -260,40 +263,16 @@ impl<'ctype> fmt::Display for Action<'ctype> {
     }
 }
 
-/// Represents a player with a controller and game state.
-pub struct Player<'ctype> {
-    /// The controller that chooses actions for this player.
-    controller: Box<dyn PlayerController>,
-
-    /// The state specific to this player.
-    state: PlayerState<'ctype>,
-}
-
-impl<'ctype> Player<'ctype> {
-    /// Creates a new `Player` with the given camps, drawing an initial hand
-    /// from the given deck.
-    pub fn new(
-        controller: Box<dyn PlayerController>,
-        camps: &[&'ctype CampType],
-        deck: &mut Vec<&'ctype (dyn PersonOrEventType + 'ctype)>,
-    ) -> Self {
-        Player {
-            controller,
-            state: PlayerState::new(camps, deck),
-        }
-    }
-}
-
 pub trait PlayerController {
     fn choose_action<'a, 'g, 'ctype: 'g>(
-        &mut self,
+        &self,
         game_state: &'g GameState<'ctype>,
         actions: &'a [Action<'ctype>],
     ) -> &'a Action<'ctype>;
 }
 
 /// Represents the state of a player's board and hand.
-struct PlayerState<'ctype> {
+pub struct PlayerState<'ctype> {
     /// The cards in the player's hand, not including Water Silo.
     hand: Cards<'ctype, dyn PersonOrEventType + 'ctype>,
 
