@@ -9,6 +9,9 @@ pub static RESET_FG: &str = "\x1b[39m";
 /// Turns on bold text.
 pub static BOLD: &str = "\x1b[1m";
 
+/// Style used for player state headings.
+pub static HEADING: &str = "\x1b[4;37m";
+
 /// Style used for water-related text.
 pub static WATER: &str = "\x1b[96m";
 

@@ -416,7 +416,7 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
     fn fmt(&self, f: &mut fmt::Formatter, is_cur_player: bool) -> fmt::Result {
         let prefix = format!("\x1b[{};1m|{RESET} ", if is_cur_player { 93 } else { 90 });
 
-        writeln!(f, "{prefix}Hand:")?;
+        writeln!(f, "{prefix}{HEADING}Hand:{RESET}")?;
         for (card_type, count) in self.hand.iter() {
             write!(f, "{prefix}  {}", card_type.name())?;
             if count > 1 {
@@ -463,7 +463,7 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
             strings
         }
 
-        writeln!(f, "{prefix}Columns:")?;
+        writeln!(f, "{prefix}{HEADING}Columns:{RESET}")?;
         let column_string_lists = self.columns.iter().map(get_column_strings).collect_vec();
         let column_widths = column_string_lists
             .iter()
@@ -479,7 +479,7 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
             writeln!(f)?;
         }
 
-        writeln!(f, "{prefix}Events:")?;
+        writeln!(f, "{prefix}{HEADING}Events:{RESET}")?;
         for (i, event) in self.events.iter().enumerate() {
             write!(f, "{prefix}  [{}]  ", i + 1)?;
             if let Some(event) = event {
