@@ -1,5 +1,6 @@
 pub mod camps;
 pub mod people;
+pub mod styles;
 
 use itertools::Itertools;
 use rand::seq::SliceRandom;
@@ -8,6 +9,7 @@ use std::fmt;
 use std::mem;
 
 use crate::cards::Cards;
+use styles::*;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum GameResult {
@@ -121,8 +123,8 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                 // hoard a huge amount of cards in their hand. The following behavior
                 // is a bit of a hack to stop the game, since it couldn't meaningfully
                 // continue in such a case.
-                eprint!("\x1b[31mTried to draw, but both deck and discard are empty! ");
-                eprintln!("Ending game with a tie.\x1b[0m");
+                eprint!("{ERROR}Tried to draw, but both deck and discard are empty! ");
+                eprintln!("Ending game with a tie.{RESET}");
                 return Err(GameResult::Tie);
             }
 
@@ -203,13 +205,31 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
 impl fmt::Display for GameState<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "Player 1:")?;
-        writeln!(f, "{}", self.player1)?;
-        writeln!(f, "Player 2:")?;
-        writeln!(f, "{}", self.player2)?;
-        writeln!(f, "{} cards in deck", self.deck.len())?;
-        write!(f, "{} cards in discard", self.discard.len())?;
-        Ok(())
+        let write_player_header = |f: &mut fmt::Formatter, is_player_1: bool| {
+            let n = if is_player_1 { 1 } else { 2 };
+            if is_player_1 == self.is_player1_turn {
+                // current player
+                writeln!(
+                    f,
+                    "{BOLD}Player {n} ({WATER}{} water{RESET_FG}){RESET}",
+                    self.cur_player_water
+                )
+            } else {
+                // other player
+                writeln!(f, "Player {n}")
+            }
+        };
+        write_player_header(f, true)?;
+        self.player1.fmt(f, self.is_player1_turn)?;
+        writeln!(f)?;
+        write_player_header(f, false)?;
+        self.player2.fmt(f, !self.is_player1_turn)?;
+        writeln!(
+            f,
+            "\n{} cards in deck, {} in discard",
+            self.deck.len(),
+            self.discard.len()
+        )
     }
 }
 
@@ -275,7 +295,7 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
     }
 }
 
-impl<'ctype> fmt::Display for Action<'ctype> {
+impl fmt::Display for Action<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Action::PlayCard(card) => write!(f, "Play {} (costs {} water)", card.name(), card.cost()),
@@ -378,13 +398,13 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
 
         actions
     }
-}
 
-impl fmt::Display for PlayerState<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "Hand:")?;
+    fn fmt(&self, f: &mut fmt::Formatter, is_cur_player: bool) -> fmt::Result {
+        let prefix = format!("\x1b[{};1m|{RESET} ", if is_cur_player { 93 } else { 90 });
+
+        writeln!(f, "{prefix}Hand:")?;
         for (card_type, count) in self.hand.iter() {
-            write!(f, "  {}", card_type.name())?;
+            write!(f, "{prefix}  {}", card_type.name())?;
             if count > 1 {
                 writeln!(f, " (x{count})")?;
             } else {
@@ -392,60 +412,36 @@ impl fmt::Display for PlayerState<'_> {
             }
         }
         if self.has_water_silo {
-            writeln!(f, "  \x1b[96mWater Silo\x1b[0m")?;
+            writeln!(f, "{prefix}  {WATER}Water Silo{RESET}")?;
         } else if self.hand.is_empty() {
-            writeln!(f, "  \x1b[90m<none>\x1b[0m")?;
+            writeln!(f, "{prefix}  {EMPTY}<none>{RESET}")?;
         }
 
-        struct ColoredString<'a> {
-            string: &'a str,
-            color: &'a str, // ANSI color code
-        }
-
-        impl fmt::Display for ColoredString<'_> {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "\x1b[{}m{}\x1b[0m", self.color, self.string)
-            }
-        }
-
-        impl ColoredString<'_> {
-            fn write_centered(&self, f: &mut fmt::Formatter, width: usize) -> fmt::Result {
-                if self.string.len() > width {
-                    panic!("String is longer than centering width");
-                }
-                let initial_padding = (width - self.string.len()) / 2;
-                for _ in 0..initial_padding {
-                    write!(f, " ")?;
-                }
-                write!(f, "\x1b[{}m{}\x1b[0m", self.color, self.string)?;
-                for _ in 0..(width - self.string.len() - initial_padding) {
-                    write!(f, " ")?;
-                }
-                Ok(())
-            }
-        }
-
-        fn get_column_strings(col: &CardColumn<'_>) -> Vec<ColoredString<'static>> {
-            let mut strings = vec![ColoredString {
+        fn get_column_strings(col: &CardColumn<'_>) -> Vec<StyledString<'static>> {
+            let mut strings = vec![StyledString {
                 string: col.camp.camp_type.name,
-                color: "94",
+                style: CAMP,
             }];
             for person_slot in &col.person_slots {
                 strings.push(match *person_slot {
-                    Some(Person::Punk(_)) => ColoredString {
+                    Some(Person::Punk(_)) => StyledString {
                         string: "Punk",
-                        color: "95",
+                        style: PUNK,
                     },
                     Some(Person::NonPunk(NonPunk {
                         person_type,
                         is_injured,
-                    })) => ColoredString {
+                    })) => StyledString {
                         string: person_type.name,
-                        color: if is_injured { "33" } else { "32" },
+                        style: if is_injured {
+                            PERSON_INJURED
+                        } else {
+                            PERSON_READY
+                        },
                     },
-                    None => ColoredString {
+                    None => StyledString {
                         string: "<none>",
-                        color: "90",
+                        style: EMPTY,
                     },
                 });
             }
@@ -453,14 +449,14 @@ impl fmt::Display for PlayerState<'_> {
             strings
         }
 
-        writeln!(f, "Columns:")?;
+        writeln!(f, "{prefix}Columns:")?;
         let column_string_lists = self.columns.iter().map(get_column_strings).collect_vec();
         let column_widths = column_string_lists
             .iter()
             .map(|column_strings| column_strings.iter().map(|s| s.string.len()).max().unwrap() + 4)
             .collect_vec();
         for row_index in 0..3 {
-            write!(f, "  ")?;
+            write!(f, "{prefix}  ")?;
             for col_index in 0..3 {
                 let column_string = &column_string_lists[col_index][row_index];
                 let width = column_widths[col_index];
@@ -469,13 +465,13 @@ impl fmt::Display for PlayerState<'_> {
             writeln!(f)?;
         }
 
-        writeln!(f, "Events:")?;
+        writeln!(f, "{prefix}Events:")?;
         for (i, event) in self.events.iter().enumerate() {
-            write!(f, "  [{}]  ", i + 1)?;
+            write!(f, "{prefix}  [{}]  ", i + 1)?;
             if let Some(event) = event {
                 writeln!(f, "{}", event.name())?;
             } else {
-                writeln!(f, "\x1b[90m<none>\x1b[0m")?;
+                writeln!(f, "{EMPTY}<none>{RESET}")?;
             }
         }
 
