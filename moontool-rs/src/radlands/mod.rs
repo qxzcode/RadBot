@@ -5,8 +5,16 @@ use itertools::Itertools;
 use rand::seq::SliceRandom;
 use rand::{thread_rng, Rng};
 use std::fmt;
+use std::mem;
 
 use crate::cards::Cards;
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum GameResult {
+    P1Wins,
+    P2Wins,
+    Tie,
+}
 
 pub struct GameState<'ctype> {
     player1: PlayerState<'ctype>,
@@ -20,6 +28,9 @@ pub struct GameState<'ctype> {
 
     /// The amount of water that the current player has available for use.
     cur_player_water: u32,
+
+    /// Whether the the deck has been reshuffled from the discard pile in this game.
+    has_reshuffled_deck: bool,
 }
 
 impl<'g, 'ctype: 'g> GameState<'ctype> {
@@ -47,6 +58,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
             discard: Vec::new(),
             is_player1_turn: thread_rng().gen(), // randomly pick which player goes first
             cur_player_water: 0,
+            has_reshuffled_deck: false,
         }
     }
 
@@ -55,7 +67,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         p1_controller: &dyn PlayerController,
         p2_controller: &dyn PlayerController,
         is_first_turn: bool,
-    ) {
+    ) -> Result<(), GameResult> {
         let cur_controller = if self.is_player1_turn {
             p1_controller
         } else {
@@ -76,7 +88,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         }
 
         // draw a card
-        self.draw_card();
+        self.draw_card()?;
 
         // perform actions
         loop {
@@ -84,10 +96,10 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
             let actions = self.cur_player().actions(self);
 
             // ask the player what to do
-            let action = cur_controller.choose_action(&self, &actions);
+            let action = cur_controller.choose_action(self, &actions);
 
             // perform the action
-            if action.perform(self) {
+            if action.perform(self)? {
                 break;
             }
 
@@ -97,16 +109,36 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
         // finally, switch whose turn it is
         self.is_player1_turn = !self.is_player1_turn;
+
+        Ok(())
     }
 
     /// Draws a card from the deck and puts it in the current player's hand.
-    pub fn draw_card(&'g mut self) {
+    pub fn draw_card(&'g mut self) -> Result<(), GameResult> {
         if self.deck.is_empty() {
-            // TODO: reshuffle from discard pile, and check for tie condition
-            todo!();
+            if self.discard.is_empty() {
+                // Theoretically, this could legitimately happen if one or more players
+                // hoard a huge amount of cards in their hand. The following behavior
+                // is a bit of a hack to stop the game, since it couldn't meaningfully
+                // continue in such a case.
+                eprint!("\x1b[31mTried to draw, but both deck and discard are empty! ");
+                eprintln!("Ending game with a tie.\x1b[0m");
+                return Err(GameResult::Tie);
+            }
+
+            // check for tie condition
+            if self.has_reshuffled_deck {
+                return Err(GameResult::Tie);
+            } else {
+                // reshuffle the discard pile into the deck
+                mem::swap(&mut self.deck, &mut self.discard);
+                self.deck.shuffle(&mut thread_rng());
+                self.has_reshuffled_deck = true;
+            }
         }
         let card = self.deck.pop().unwrap();
         self.cur_player_mut().hand.add_one(card);
+        Ok(())
     }
 
     /// Subtracts the given amount of water from the current player's pool.
@@ -167,14 +199,6 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
             &self.player2
         }
     }
-
-    pub fn other_player_mut(&'g mut self) -> &'g mut PlayerState<'ctype> {
-        if self.is_player1_turn {
-            &mut self.player2
-        } else {
-            &mut self.player1
-        }
-    }
 }
 
 impl fmt::Display for GameState<'_> {
@@ -210,7 +234,7 @@ pub enum Action<'ctype> {
 impl<'g, 'ctype: 'g> Action<'ctype> {
     /// Performs the action on the given game state.
     /// Returns whether the player's turn should end after this action.
-    pub fn perform(&self, game_state: &'g mut GameState<'ctype>) -> bool {
+    pub fn perform(&self, game_state: &'g mut GameState<'ctype>) -> Result<bool, GameResult> {
         match *self {
             Action::PlayCard(card) => {
                 // pay the card's cost and remove it from the player's hand
@@ -221,12 +245,12 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
                 todo!();
                 // let person = Person::new_non_punk(card);
                 // game_state.cur_player().columns[0].people.push(person);
-                false
+                Ok(false)
             },
             Action::DrawCard => {
                 game_state.spend_water(2);
-                game_state.draw_card();
-                false
+                game_state.draw_card()?;
+                Ok(false)
             },
             Action::JunkCard(card) => {
                 // move the card to the discard pile
@@ -234,18 +258,18 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
                 game_state.discard.push(card);
 
                 // perform the card's junk effect
-                card.junk_effect().perform(game_state);
+                card.junk_effect().perform(game_state)?;
 
-                false
+                Ok(false)
             },
             Action::UseAbility(/*TODO*/) => {
                 todo!();
-                false
+                Ok(false)
             },
             Action::EndTurn => {
                 // take Water Silo if possible, then end the turn
                 game_state.cur_player_mut().has_water_silo = game_state.cur_player_water >= 1;
-                true
+                Ok(true)
             },
         }
     }
@@ -274,18 +298,18 @@ pub trait PlayerController {
 /// Represents the state of a player's board and hand.
 pub struct PlayerState<'ctype> {
     /// The cards in the player's hand, not including Water Silo.
-    hand: Cards<'ctype, dyn PersonOrEventType + 'ctype>,
+    pub hand: Cards<'ctype, dyn PersonOrEventType + 'ctype>,
 
     /// When it is not this player's turn, whether this player has Water Silo
     /// in their hand. (They are assumed to not have it in their hand when it
     /// *is* this player's turn.)
-    has_water_silo: bool,
+    pub has_water_silo: bool,
 
     /// The three columns of the player's board.
-    columns: [CardColumn<'ctype>; 3],
+    pub columns: [CardColumn<'ctype>; 3],
 
     /// The three event slots of the player's board.
-    events: [Option<&'ctype (dyn EventType + 'ctype)>; 3],
+    pub events: [Option<&'ctype (dyn EventType + 'ctype)>; 3],
 }
 
 impl<'g, 'ctype: 'g> PlayerState<'ctype> {
@@ -337,6 +361,7 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
             match person {
                 Person::Punk(_) => {
                     // punks don't have abilities
+                    // TODO: unless they're given one by another card
                 }
                 Person::NonPunk(NonPunk {
                     person_type,
@@ -458,13 +483,13 @@ impl fmt::Display for PlayerState<'_> {
     }
 }
 
-struct CardColumn<'ctype> {
+pub struct CardColumn<'ctype> {
     /// The column's camp.
-    camp: Camp<'ctype>,
+    pub camp: Camp<'ctype>,
 
     /// The people slots in the column.
     /// The first slot (index 0) is the one directly in front of the camp.
-    person_slots: [Option<Person<'ctype>>; 2],
+    pub person_slots: [Option<Person<'ctype>>; 2],
 }
 
 impl<'ctype> CardColumn<'ctype> {
@@ -488,23 +513,23 @@ impl<'ctype> CardColumn<'ctype> {
 }
 
 /// A camp on the board.
-struct Camp<'ctype> {
+pub struct Camp<'ctype> {
     /// The camp type.
-    camp_type: &'ctype CampType,
+    pub camp_type: &'ctype CampType,
 
     /// The damage status of the camp.
-    status: CampStatus,
+    pub status: CampStatus,
 }
 
 /// Enum representing the damage status of a camp.
-enum CampStatus {
+pub enum CampStatus {
     Undamaged,
     Damaged,
     Destroyed,
 }
 
 /// A person played on the board (a punk or face-up person).
-enum Person<'ctype> {
+pub enum Person<'ctype> {
     Punk(&'ctype PersonType),
     NonPunk(NonPunk<'ctype>),
 }
@@ -520,7 +545,7 @@ impl<'ctype> Person<'ctype> {
 }
 
 /// A non-punk (face-up) person played on the board.
-struct NonPunk<'ctype> {
+pub struct NonPunk<'ctype> {
     person_type: &'ctype PersonType,
     is_injured: bool,
 }
@@ -584,7 +609,7 @@ impl PersonOrEventType for PersonType {
 }
 
 /// Trait for a type of event card.
-trait EventType: PersonOrEventType {
+pub trait EventType: PersonOrEventType {
     /// Returns the number of turns before the event resolves after being played.
     fn resolve_turns(&self) -> u8;
 
@@ -599,7 +624,7 @@ trait EventType: PersonOrEventType {
     }
 }
 
-struct RaidersEvent;
+pub struct RaidersEvent;
 
 impl PersonOrEventType for RaidersEvent {
     fn name(&self) -> &'static str {
@@ -647,7 +672,10 @@ pub enum IconEffect {
 
 impl IconEffect {
     /// Performs the effect for the current player.
-    pub fn perform<'g, 'ctype: 'g>(&self, game_state: &'g mut GameState<'ctype>) {
+    pub fn perform<'g, 'ctype: 'g>(
+        &self,
+        game_state: &'g mut GameState<'ctype>,
+    ) -> Result<(), GameResult> {
         match *self {
             IconEffect::Damage => {
                 todo!();
@@ -659,7 +687,7 @@ impl IconEffect {
                 todo!();
             }
             IconEffect::Draw => {
-                game_state.draw_card();
+                game_state.draw_card()?;
             }
             IconEffect::Water => {
                 game_state.gain_water();
@@ -671,5 +699,6 @@ impl IconEffect {
                 game_state.raid();
             }
         }
+        Ok(())
     }
 }

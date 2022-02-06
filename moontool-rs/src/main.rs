@@ -77,6 +77,16 @@ fn main() {
 
     for turn_num in 1.. {
         println!("\nTurn {}\n", turn_num);
-        game_state.do_turn(&hc1, &hc2, turn_num == 1);
+        if let Err(result) = game_state.do_turn(&hc1, &hc2, turn_num == 1) {
+            println!(
+                "\nGame ended; {}",
+                match result {
+                    GameResult::P1Wins => "player 1 wins!",
+                    GameResult::P2Wins => "player 2 wins!",
+                    GameResult::Tie => "tie!",
+                }
+            );
+            break;
+        }
     }
 }
