@@ -373,12 +373,20 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
         }
     }
 
+    /// Returns whether this player has an empty person slot.
+    pub fn has_empty_person_slot(&self) -> bool {
+        self.columns
+            .iter()
+            .any(|col| col.person_slots.iter().any(|slot| slot.is_none()))
+    }
+
     pub fn actions(&self, game: &'g GameState<'ctype>) -> Vec<Action<'ctype>> {
         let mut actions = Vec::new();
 
         // actions to play or junk a card
+        let can_play_card = self.has_empty_person_slot();
         for card_type in self.hand.iter_unique() {
-            if game.cur_player_water >= card_type.cost() {
+            if can_play_card && game.cur_player_water >= card_type.cost() {
                 actions.push(Action::PlayCard(card_type));
             }
             actions.push(Action::JunkCard(card_type));
@@ -498,7 +506,7 @@ pub struct CardColumn<'ctype> {
     pub camp: Camp<'ctype>,
 
     /// The people slots in the column.
-    /// The first slot (index 0) is the one directly in front of the camp.
+    /// The first slot (index 0) is the one in the back.
     pub person_slots: [Option<Person<'ctype>>; 2],
 }
 
