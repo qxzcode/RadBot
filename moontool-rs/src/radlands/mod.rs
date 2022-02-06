@@ -312,11 +312,11 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
 impl fmt::Display for Action<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Action::PlayCard(card) => write!(f, "Play {} (costs {} water)", card.name(), card.cost()),
-            Action::DrawCard => write!(f, "Draw a card (costs 2 water)"),
+            Action::PlayCard(card) => write!(f, "Play {} (costs {WATER}{} water{RESET})", card.name(), card.cost()),
+            Action::DrawCard => write!(f, "Draw a card (costs {WATER}2 water{RESET})"),
             Action::JunkCard(card) => write!(f, "Junk {}", card.name()),
             Action::UseAbility(/*TODO*/) => write!(f, "Use ability: [TODO]"),
-            Action::EndTurn => write!(f, "End turn, taking Water Silo if possible"),
+            Action::EndTurn => write!(f, "End turn, taking {WATER}Water Silo{RESET} if possible"),
         }
     }
 }
