@@ -31,6 +31,10 @@ pub struct GameState<'ctype> {
     /// The amount of water that the current player has available for use.
     cur_player_water: u32,
 
+    /// Whether the current player has used the generic "pay 2 water to draw a card"
+    /// ability this turn.
+    has_paid_to_draw: bool,
+
     /// Whether the the deck has been reshuffled from the discard pile in this game.
     has_reshuffled_deck: bool,
 }
@@ -60,6 +64,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
             discard: Vec::new(),
             is_player1_turn: thread_rng().gen(), // randomly pick which player goes first
             cur_player_water: 0,
+            has_paid_to_draw: false,
             has_reshuffled_deck: false,
         }
     }
@@ -88,6 +93,9 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
             self.cur_player_water += 1;
             self.cur_player_mut().has_water_silo = false;
         }
+
+        // reset other turn state
+        self.has_paid_to_draw = false;
 
         // draw a card
         self.draw_card_into_hand()?;
@@ -275,6 +283,7 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
             Action::DrawCard => {
                 game_state.spend_water(2);
                 game_state.draw_card_into_hand()?;
+                game_state.has_paid_to_draw = true;
                 Ok(false)
             },
             Action::JunkCard(card) => {
@@ -376,8 +385,8 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
         }
 
         // action to pay 2 water to draw a card
-        // TODO: limit to 1 use per turn
-        if game.cur_player_water >= 2 {
+        // (limited to 1 use per turn)
+        if game.cur_player_water >= 2 && !game.has_paid_to_draw {
             actions.push(Action::DrawCard);
         }
 
