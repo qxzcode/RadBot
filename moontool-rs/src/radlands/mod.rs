@@ -90,7 +90,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         }
 
         // draw a card
-        self.draw_card()?;
+        self.draw_card_into_hand()?;
 
         // perform actions
         loop {
@@ -115,8 +115,8 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         Ok(())
     }
 
-    /// Draws a card from the deck and puts it in the current player's hand.
-    pub fn draw_card(&'g mut self) -> Result<(), GameResult> {
+    /// Draws a card from the deck.
+    pub fn draw_card(&'g mut self) -> Result<&'ctype dyn PersonOrEventType, GameResult> {
         if self.deck.is_empty() {
             if self.discard.is_empty() {
                 // Theoretically, this could legitimately happen if one or more players
@@ -138,7 +138,12 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                 self.has_reshuffled_deck = true;
             }
         }
-        let card = self.deck.pop().unwrap();
+        Ok(self.deck.pop().unwrap())
+    }
+
+    /// Draws a card from the deck and puts it in the current player's hand.
+    pub fn draw_card_into_hand(&'g mut self) -> Result<(), GameResult> {
+        let card = self.draw_card()?;
         self.cur_player_mut().hand.add_one(card);
         Ok(())
     }
@@ -269,7 +274,7 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
             },
             Action::DrawCard => {
                 game_state.spend_water(2);
-                game_state.draw_card()?;
+                game_state.draw_card_into_hand()?;
                 Ok(false)
             },
             Action::JunkCard(card) => {
@@ -683,7 +688,7 @@ impl IconEffect {
                 todo!();
             }
             IconEffect::Draw => {
-                game_state.draw_card()?;
+                game_state.draw_card_into_hand()?;
             }
             IconEffect::Water => {
                 game_state.gain_water();
