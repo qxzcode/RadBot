@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, Display};
 
 /// Resets all styling to default.
 pub static RESET: &str = "\x1b[0m";
@@ -26,6 +26,9 @@ pub static PERSON_NOT_READY: &str = "\x1b[93m";
 
 /// Style used for a played person that is injured.
 pub static PERSON_INJURED: &str = "\x1b[91m";
+
+/// Style used for events.
+pub static EVENT: &str = "\x1b[95m";
 
 /// Style used for camp names.
 pub static CAMP: &str = "\x1b[94m";
@@ -56,7 +59,7 @@ impl StyledString<'_> {
         for _ in 0..initial_padding {
             write!(f, " ")?;
         }
-        write!(f, "{}{}{RESET}", self.style, self.string)?;
+        self.fmt(f)?;
         for _ in 0..(width - self.string.len() - initial_padding) {
             write!(f, " ")?;
         }

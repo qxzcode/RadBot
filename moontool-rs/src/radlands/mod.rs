@@ -312,9 +312,9 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
 impl fmt::Display for Action<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Action::PlayCard(card) => write!(f, "Play {} (costs {WATER}{} water{RESET})", card.name(), card.cost()),
+            Action::PlayCard(card) => write!(f, "Play {} (costs {WATER}{} water{RESET})", card.get_styled_name(), card.cost()),
             Action::DrawCard => write!(f, "Draw a card (costs {WATER}2 water{RESET})"),
-            Action::JunkCard(card) => write!(f, "Junk {}", card.name()),
+            Action::JunkCard(card) => write!(f, "Junk {}", card.get_styled_name()),
             Action::UseAbility(/*TODO*/) => write!(f, "Use ability: [TODO]"),
             Action::EndTurn => write!(f, "End turn, taking {WATER}Water Silo{RESET} if possible"),
         }
@@ -426,7 +426,7 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
 
         writeln!(f, "{prefix}{HEADING}Hand:{RESET}")?;
         for (card_type, count) in self.hand.iter() {
-            write!(f, "{prefix}  {}", card_type.name())?;
+            write!(f, "{prefix}  {}", card_type.get_styled_name())?;
             if count > 1 {
                 writeln!(f, " (x{count})")?;
             } else {
@@ -590,6 +590,27 @@ pub trait PersonOrEventType {
 
     /// Returns the water cost to play this card.
     fn cost(&self) -> u32;
+
+    fn as_person(&self) -> Option<&PersonType> {
+        None
+    }
+
+    /// Returns whether this card is a person (not an event).
+    fn is_person(&self) -> bool {
+        self.as_person().is_some()
+    }
+
+    /// Returns this card's name, styled for display.
+    fn get_styled_name(&self) -> StyledString<'static> {
+        StyledString {
+            string: self.name(),
+            style: if self.is_person() {
+                PERSON_READY
+            } else {
+                EVENT
+            },
+        }
+    }
 }
 
 /// A type of person card.
@@ -623,6 +644,10 @@ impl PersonOrEventType for PersonType {
 
     fn cost(&self) -> u32 {
         self.cost
+    }
+
+    fn as_person(&self) -> Option<&PersonType> {
+        Some(self)
     }
 }
 
