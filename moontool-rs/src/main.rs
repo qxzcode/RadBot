@@ -5,8 +5,30 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use std::io;
 use std::io::Write;
+use std::ops::RangeBounds;
+use std::str::FromStr;
 
+use radlands::styles::*;
 use radlands::*;
+
+/// Prompts the user for a valid number within some range and returns it.
+fn prompt_for_number<T: FromStr + PartialOrd>(prompt: &str, range: impl RangeBounds<T>) -> T {
+    loop {
+        print!("{prompt}");
+        io::stdout().flush().expect("Failed to flush stdout");
+
+        let mut input_line = String::new();
+        io::stdin()
+            .read_line(&mut input_line)
+            .expect("Failed to read input");
+
+        if let Ok(number) = input_line.trim().parse::<T>() {
+            if range.contains(&number) {
+                return number;
+            }
+        }
+    }
+}
 
 /// A `PlayerController` that allows manual, human input.
 struct HumanController {
@@ -19,30 +41,28 @@ impl PlayerController for HumanController {
         game_state: &'g GameState<'ctype>,
         actions: &'a [Action<'ctype>],
     ) -> &'a Action<'ctype> {
+        // clear the screen and print the game state
         print!("\x1b[2J\x1b[H");
         println!("{}\n", game_state);
 
+        // print the available actions
         println!("{} - choose an action:", self.label);
         for (i, action) in actions.iter().enumerate() {
             println!("  ({})  {action}", i + 1);
         }
 
         // prompt the user for an action
-        loop {
-            print!("Choose an action: ");
-            io::stdout().flush().unwrap();
+        let action_number = prompt_for_number("Choose an action: ", 1..=actions.len());
+        &actions[action_number - 1]
+    }
 
-            let mut input_line = String::new();
-            io::stdin()
-                .read_line(&mut input_line)
-                .expect("Failed to read input");
-
-            if let Ok(index) = input_line.trim().parse::<usize>() {
-                if index > 0 && index <= actions.len() {
-                    return &actions[index - 1];
-                }
-            }
-        }
+    fn choose_play_location<'a, 'g, 'ctype: 'g>(
+        &self,
+        game_state: &'g GameState<'ctype>,
+        person: &'ctype PersonType,
+        locations: &'a [PlayLocation],
+    ) -> PlayLocation {
+        todo!()
     }
 }
 
@@ -58,8 +78,22 @@ impl PlayerController for RandomController {
         let chosen_action = actions
             .choose(&mut rng)
             .expect("choose_action called with empty actions list");
-        println!("RandomController chose action: {chosen_action}");
+        println!("{BOLD}RandomController chose action:{RESET} {chosen_action}");
         chosen_action
+    }
+
+    fn choose_play_location<'a, 'g, 'ctype: 'g>(
+        &self,
+        game_state: &'g GameState<'ctype>,
+        person: &'ctype PersonType,
+        locations: &'a [PlayLocation],
+    ) -> PlayLocation {
+        let mut rng = thread_rng();
+        let chosen_location = locations
+            .choose(&mut rng)
+            .expect("choose_play_location called with empty locations list");
+        println!("{BOLD}RandomController chose location:{RESET} {chosen_location:?}");
+        *chosen_location
     }
 }
 
@@ -71,8 +105,8 @@ fn main() {
 
     let hc1 = HumanController { label: "Human 1" };
     let hc2 = HumanController { label: "Human 2" };
-    // let hc1 = RandomController;
-    // let hc2 = RandomController;
+    let hc1 = RandomController;
+    let hc2 = RandomController;
     let mut game_state = GameState::new(&camp_types, &person_types);
 
     for turn_num in 1.. {

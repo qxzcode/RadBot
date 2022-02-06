@@ -109,7 +109,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
             let action = cur_controller.choose_action(self, &actions);
 
             // perform the action
-            if action.perform(self)? {
+            if action.perform(self, cur_controller)? {
                 break;
             }
 
@@ -246,6 +246,25 @@ impl fmt::Display for GameState<'_> {
     }
 }
 
+/// A location at which to play a person onto the board.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlayLocation {
+    /// The column to play the person into (0, 1, or 2).
+    column: u8,
+
+    /// The row to play the person into (0 or 1).
+    row: u8,
+}
+
+impl PlayLocation {
+    /// Creates a new PlayLocation.
+    pub fn new(column: u8, row: u8) -> Self {
+        assert!(column < 3);
+        assert!(row < 2);
+        Self { column, row }
+    }
+}
+
 /// An action that can be performed by a player during their turn.
 pub enum Action<'ctype> {
     /// Play a person or event card from the hand onto the board.
@@ -267,15 +286,24 @@ pub enum Action<'ctype> {
 impl<'g, 'ctype: 'g> Action<'ctype> {
     /// Performs the action on the given game state.
     /// Returns whether the player's turn should end after this action.
-    pub fn perform(&self, game_state: &'g mut GameState<'ctype>) -> Result<bool, GameResult> {
+    fn perform(
+        &self,
+        game_state: &'g mut GameState<'ctype>,
+        cur_controller: &dyn PlayerController,
+    ) -> Result<bool, GameResult> {
         match *self {
             Action::PlayCard(card) => {
                 // pay the card's cost and remove it from the player's hand
                 game_state.spend_water(card.cost());
                 game_state.cur_player_mut().hand.remove_one(card);
 
-                // determine where to place the card
-                todo!();
+                if let Some(person) = card.as_person() {
+                    // play the person onto the board
+                    Action::play_person(game_state, cur_controller, person);
+                } else {
+                    todo!();
+                }
+
                 // let person = Person::new_non_punk(card);
                 // game_state.cur_player().columns[0].people.push(person);
                 Ok(false)
@@ -307,6 +335,46 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
             },
         }
     }
+
+    fn play_person(
+        game_state: &'g mut GameState<'ctype>,
+        cur_controller: &dyn PlayerController,
+        person: &'ctype PersonType,
+    ) {
+        // determine possible locations to place the card
+        let mut play_locs = Vec::new();
+        for (col_index, col) in game_state.cur_player().columns.iter().enumerate() {
+            match col.people().count() {
+                0 => {
+                    // no people in this column, so only one possible play location
+                    play_locs.push(PlayLocation::new(col_index as u8, 0));
+                }
+                1 => {
+                    // one person in this column, so two possible play locations
+                    play_locs.push(PlayLocation::new(col_index as u8, 0));
+                    play_locs.push(PlayLocation::new(col_index as u8, 1));
+                }
+                _ => {
+                    // two people in this column, so no possible play locations
+                }
+            }
+        }
+
+        // ask the player controller which location to play the card into
+        let play_loc = cur_controller.choose_play_location(game_state, person, &play_locs);
+
+        // place the card onto the board
+        let col_index = play_loc.column as usize;
+        let row_index = play_loc.row as usize;
+        let col = &mut game_state.cur_player_mut().columns[col_index];
+        if let Some(old_person) = col.person_slots[row_index].replace(Person::new_non_punk(person))
+        {
+            // if there was a person in the slot, move it to the other slot
+            let other_row_index = 1 - row_index;
+            let replaced_slot = col.person_slots[other_row_index].replace(old_person);
+            assert!(replaced_slot.is_none());
+        }
+    }
 }
 
 impl fmt::Display for Action<'_> {
@@ -327,6 +395,13 @@ pub trait PlayerController {
         game_state: &'g GameState<'ctype>,
         actions: &'a [Action<'ctype>],
     ) -> &'a Action<'ctype>;
+
+    fn choose_play_location<'a, 'g, 'ctype: 'g>(
+        &self,
+        game_state: &'g GameState<'ctype>,
+        person: &'ctype PersonType,
+        locations: &'a [PlayLocation],
+    ) -> PlayLocation;
 }
 
 /// Represents the state of a player's board and hand.
