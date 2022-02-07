@@ -175,15 +175,17 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
     /// Has the current player add a punk to their board.
     /// Does nothing if the player's board is full.
-    pub fn gain_punk(&mut self) {
-        todo!();
+    pub fn gain_punk(&mut self, cur_controller: &dyn PlayerController) -> Result<(), GameResult> {
+        if self.cur_player().has_empty_person_slot() {
+            let punk = Person::Punk(self.draw_card()?);
+            self.play_person(cur_controller, punk);
+        }
+        Ok(())
     }
 
-    fn play_person(
-        &'g mut self,
-        cur_controller: &dyn PlayerController,
-        person: &'ctype PersonType,
-    ) {
+    /// Asks the current player's controller to choose a location, then plays the given person
+    /// onto that location.
+    fn play_person(&'g mut self, cur_controller: &dyn PlayerController, person: Person<'ctype>) {
         // determine possible locations to place the card
         let mut play_locs = Vec::new();
         for (col_index, col) in self.cur_player().columns.iter().enumerate() {
@@ -204,14 +206,13 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         }
 
         // ask the player controller which location to play the card into
-        let play_loc = cur_controller.choose_play_location(self, person, &play_locs);
+        let play_loc = cur_controller.choose_play_location(self, &person, &play_locs);
 
         // place the card onto the board
         let col_index = play_loc.column() as usize;
         let row_index = play_loc.row() as usize;
         let col = &mut self.cur_player_mut().columns[col_index];
-        if let Some(old_person) = col.person_slots[row_index].replace(Person::new_non_punk(person))
-        {
+        if let Some(old_person) = col.person_slots[row_index].replace(person) {
             // if there was a person in the slot, move it to the other slot
             let other_row_index = 1 - row_index;
             let replaced_slot = col.person_slots[other_row_index].replace(old_person);
@@ -352,7 +353,7 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
 
                 if let Some(person_type) = card.as_person() {
                     // play the person onto the board
-                    game_state.play_person(cur_controller, person_type);
+                    game_state.play_person(cur_controller, Person::new_non_punk(person_type));
                 } else {
                     todo!();
                 }
@@ -373,7 +374,7 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
                 game_state.discard.push(card);
 
                 // perform the card's junk effect
-                card.junk_effect().perform(game_state)?;
+                card.junk_effect().perform(game_state, cur_controller)?;
 
                 Ok(false)
             },
@@ -412,7 +413,7 @@ pub trait PlayerController {
     fn choose_play_location<'g, 'ctype: 'g>(
         &self,
         game_state: &'g GameState<'ctype>,
-        person: &'ctype PersonType,
+        person: &Person<'ctype>,
         locations: &[PlayLocation],
     ) -> PlayLocation;
 }
@@ -616,7 +617,7 @@ pub enum CampStatus {
 
 /// A person played on the board (a punk or face-up person).
 pub enum Person<'ctype> {
-    Punk(&'ctype PersonType),
+    Punk(&'ctype dyn PersonOrEventType),
     NonPunk(NonPunk<'ctype>),
 }
 
@@ -818,6 +819,7 @@ impl IconEffect {
     pub fn perform<'g, 'ctype: 'g>(
         &self,
         game_state: &'g mut GameState<'ctype>,
+        cur_controller: &dyn PlayerController,
     ) -> Result<(), GameResult> {
         match *self {
             IconEffect::Damage => {
@@ -836,7 +838,7 @@ impl IconEffect {
                 game_state.gain_water();
             }
             IconEffect::GainPunk => {
-                game_state.gain_punk();
+                game_state.gain_punk(cur_controller)?;
             }
             IconEffect::Raid => {
                 game_state.raid();

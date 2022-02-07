@@ -60,7 +60,7 @@ impl PlayerController for HumanController {
     fn choose_play_location<'g, 'ctype: 'g>(
         &self,
         game_state: &'g GameState<'ctype>,
-        person: &'ctype PersonType,
+        person: &Person<'ctype>,
         locations: &[PlayLocation],
     ) -> PlayLocation {
         let style_person_slot = |slot: &Option<Person>| match slot {
@@ -111,7 +111,7 @@ impl PlayerController for RandomController {
     fn choose_play_location<'g, 'ctype: 'g>(
         &self,
         _game_state: &'g GameState<'ctype>,
-        _person: &'ctype PersonType,
+        _person: &Person<'ctype>,
         locations: &[PlayLocation],
     ) -> PlayLocation {
         let mut rng = thread_rng();
