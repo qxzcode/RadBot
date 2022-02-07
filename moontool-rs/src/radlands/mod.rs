@@ -514,7 +514,7 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
             writeln!(f, "{prefix}  {EMPTY}<none>{RESET}")?;
         }
 
-        fn get_column_strings(col: &CardColumn<'_>) -> Vec<StyledString<'static>> {
+        fn get_column_strings(col: &CardColumn<'_>) -> Vec<StyledString> {
             vec![
                 col.person_slots[1].get_styled_name(),
                 col.person_slots[0].get_styled_name(),
@@ -580,21 +580,18 @@ pub struct Camp<'ctype> {
 
 impl StyledName for Camp<'_> {
     /// Returns this camps's name, styled for display.
-    fn get_styled_name(&self) -> StyledString<'static> {
+    fn get_styled_name(&self) -> StyledString {
         if let CampStatus::Destroyed = self.status {
-            StyledString {
-                string: "<destroyed>",
-                style: CAMP_DESTROYED,
-            }
+            StyledString::new("<destroyed>", CAMP_DESTROYED)
         } else {
-            StyledString {
-                string: self.camp_type.name,
-                style: match self.status {
+            StyledString::new(
+                self.camp_type.name,
+                match self.status {
                     CampStatus::Undamaged => CAMP,
                     CampStatus::Damaged => CAMP_DAMAGED,
                     CampStatus::Destroyed => unreachable!(),
                 },
-            }
+            )
         }
     }
 }
@@ -624,27 +621,21 @@ impl<'ctype> Person<'ctype> {
 
 impl StyledName for Option<Person<'_>> {
     /// Returns the name of the person, styled for display.
-    fn get_styled_name(&self) -> StyledString<'static> {
+    fn get_styled_name(&self) -> StyledString {
         match self {
-            Some(Person::Punk(_)) => StyledString {
-                string: "Punk",
-                style: PUNK,
-            },
+            Some(Person::Punk(_)) => StyledString::new("Punk", PUNK),
             Some(Person::NonPunk(NonPunk {
                 person_type,
                 is_injured,
-            })) => StyledString {
-                string: person_type.name,
-                style: if *is_injured {
+            })) => StyledString::new(
+                person_type.name,
+                if *is_injured {
                     PERSON_INJURED
                 } else {
                     PERSON_READY
                 },
-            },
-            None => StyledString {
-                string: "<none>",
-                style: EMPTY,
-            },
+            ),
+            None => StyledString::new("<none>", EMPTY),
         }
     }
 }
@@ -690,15 +681,15 @@ pub trait PersonOrEventType: StyledName {
 
 impl<T: PersonOrEventType> StyledName for T {
     /// Returns this card's name, styled for display.
-    fn get_styled_name(&self) -> StyledString<'static> {
-        StyledString {
-            string: self.name(),
-            style: if self.is_person() {
+    fn get_styled_name(&self) -> StyledString {
+        StyledString::new(
+            self.name(),
+            if self.is_person() {
                 PERSON_READY
             } else {
                 EVENT
             },
-        }
+        )
     }
 }
 

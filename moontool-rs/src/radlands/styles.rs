@@ -47,31 +47,44 @@ pub static EMPTY: &str = "\x1b[90m";
 /// Style used for error text.
 pub static ERROR: &str = "\x1b[91m";
 
-pub struct StyledString<'a> {
-    pub string: &'a str,
-    pub style: &'a str, // ANSI escape sequence
+pub struct StyledString {
+    string: String,
+    display_length: usize,
 }
 
-impl StyledString<'_> {
+impl StyledString {
+    /// Creates a new `StyledString` with the given content and style.
+    pub fn new(string: &str, style: &str) -> Self {
+        Self {
+            string: format!("{}{}{}", style, string, RESET),
+            display_length: string.chars().count(),
+        }
+    }
+
+    /// Returns the length of the string when displayed.
+    pub fn len(&self) -> usize {
+        self.display_length
+    }
+
     pub fn write_centered(&self, f: &mut fmt::Formatter, width: usize) -> fmt::Result {
-        if self.string.len() > width {
+        if self.len() > width {
             panic!("String is longer than centering width");
         }
-        let initial_padding = (width - self.string.len()) / 2;
+        let initial_padding = (width - self.len()) / 2;
         for _ in 0..initial_padding {
             write!(f, " ")?;
         }
         self.fmt(f)?;
-        for _ in 0..(width - self.string.len() - initial_padding) {
+        for _ in 0..(width - self.len() - initial_padding) {
             write!(f, " ")?;
         }
         Ok(())
     }
 }
 
-impl fmt::Display for StyledString<'_> {
+impl fmt::Display for StyledString {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}{}{RESET}", self.style, self.string)
+        write!(f, "{}", self.string)
     }
 }
 
@@ -98,5 +111,5 @@ pub fn write_table(
 
 pub trait StyledName {
     /// Returns this object's name, styled for display.
-    fn get_styled_name(&self) -> StyledString<'static>;
+    fn get_styled_name(&self) -> StyledString;
 }
