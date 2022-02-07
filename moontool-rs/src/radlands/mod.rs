@@ -173,9 +173,52 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         self.cur_player_water += 1;
     }
 
-    /// Has the current player add a punk to their board, if possible.
+    /// Has the current player add a punk to their board.
+    /// Does nothing if the player's board is full.
     pub fn gain_punk(&mut self) {
         todo!();
+    }
+
+    fn play_person(
+        &'g mut self,
+        cur_controller: &dyn PlayerController,
+        person: &'ctype PersonType,
+    ) {
+        // determine possible locations to place the card
+        let mut play_locs = Vec::new();
+        for (col_index, col) in self.cur_player().columns.iter().enumerate() {
+            match col.people().count() {
+                0 => {
+                    // no people in this column, so only one possible play location
+                    play_locs.push(PlayLocation::new(col_index as u8, 0));
+                }
+                1 => {
+                    // one person in this column, so two possible play locations
+                    play_locs.push(PlayLocation::new(col_index as u8, 0));
+                    play_locs.push(PlayLocation::new(col_index as u8, 1));
+                }
+                _ => {
+                    // two people in this column, so no possible play locations
+                }
+            }
+        }
+
+        // ask the player controller which location to play the card into
+        let play_loc = cur_controller.choose_play_location(self, person, &play_locs);
+
+        // place the card onto the board
+        let col_index = play_loc.column() as usize;
+        let row_index = play_loc.row() as usize;
+        let col = &mut self.cur_player_mut().columns[col_index];
+        if let Some(old_person) = col.person_slots[row_index].replace(Person::new_non_punk(person))
+        {
+            // if there was a person in the slot, move it to the other slot
+            let other_row_index = 1 - row_index;
+            let replaced_slot = col.person_slots[other_row_index].replace(old_person);
+            assert!(replaced_slot.is_none());
+        }
+
+        // TODO: activate any on-play effect of the person
     }
 
     /// Plays or advances the current player's Raiders event.
@@ -309,7 +352,7 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
 
                 if let Some(person_type) = card.as_person() {
                     // play the person onto the board
-                    Action::play_person(game_state, cur_controller, person_type);
+                    game_state.play_person(cur_controller, person_type);
                 } else {
                     todo!();
                 }
@@ -344,48 +387,6 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
                 Ok(true)
             },
         }
-    }
-
-    fn play_person(
-        game_state: &'g mut GameState<'ctype>,
-        cur_controller: &dyn PlayerController,
-        person: &'ctype PersonType,
-    ) {
-        // determine possible locations to place the card
-        let mut play_locs = Vec::new();
-        for (col_index, col) in game_state.cur_player().columns.iter().enumerate() {
-            match col.people().count() {
-                0 => {
-                    // no people in this column, so only one possible play location
-                    play_locs.push(PlayLocation::new(col_index as u8, 0));
-                }
-                1 => {
-                    // one person in this column, so two possible play locations
-                    play_locs.push(PlayLocation::new(col_index as u8, 0));
-                    play_locs.push(PlayLocation::new(col_index as u8, 1));
-                }
-                _ => {
-                    // two people in this column, so no possible play locations
-                }
-            }
-        }
-
-        // ask the player controller which location to play the card into
-        let play_loc = cur_controller.choose_play_location(game_state, person, &play_locs);
-
-        // place the card onto the board
-        let col_index = play_loc.column() as usize;
-        let row_index = play_loc.row() as usize;
-        let col = &mut game_state.cur_player_mut().columns[col_index];
-        if let Some(old_person) = col.person_slots[row_index].replace(Person::new_non_punk(person))
-        {
-            // if there was a person in the slot, move it to the other slot
-            let other_row_index = 1 - row_index;
-            let replaced_slot = col.person_slots[other_row_index].replace(old_person);
-            assert!(replaced_slot.is_none());
-        }
-
-        // TODO: activate any on-play effect of the person
     }
 }
 
