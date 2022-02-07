@@ -1,5 +1,7 @@
 use std::fmt::{self, Display};
 
+use itertools::Itertools;
+
 /// Resets all styling to default.
 pub static RESET: &str = "\x1b[0m";
 
@@ -30,8 +32,14 @@ pub static PERSON_INJURED: &str = "\x1b[91m";
 /// Style used for events.
 pub static EVENT: &str = "\x1b[95m";
 
-/// Style used for camp names.
+/// Style used for (undamaged) camp names.
 pub static CAMP: &str = "\x1b[94m";
+
+/// Style used for damaged camp names.
+pub static CAMP_DAMAGED: &str = "\x1b[91m";
+
+/// Style used for destroyed camps.
+pub static CAMP_DESTROYED: &str = "\x1b[90m";
 
 /// Style used to denote something missing or empty.
 pub static EMPTY: &str = "\x1b[90m";
@@ -42,12 +50,6 @@ pub static ERROR: &str = "\x1b[91m";
 pub struct StyledString<'a> {
     pub string: &'a str,
     pub style: &'a str, // ANSI escape sequence
-}
-
-impl fmt::Display for StyledString<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}{}{RESET}", self.style, self.string)
-    }
 }
 
 impl StyledString<'_> {
@@ -65,4 +67,36 @@ impl StyledString<'_> {
         }
         Ok(())
     }
+}
+
+impl fmt::Display for StyledString<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}{}{RESET}", self.style, self.string)
+    }
+}
+
+pub fn write_table(
+    f: &mut fmt::Formatter,
+    column_string_lists: &[Vec<StyledString>],
+    line_prefix: &str,
+) -> fmt::Result {
+    let column_widths = column_string_lists
+        .iter()
+        .map(|column_strings| column_strings.iter().map(|s| s.string.len()).max().unwrap() + 4)
+        .collect_vec();
+    for row_index in 0..3 {
+        write!(f, "{line_prefix}  ")?;
+        for col_index in 0..3 {
+            let column_string = &column_string_lists[col_index][row_index];
+            let width = column_widths[col_index];
+            column_string.write_centered(f, width)?;
+        }
+        writeln!(f)?;
+    }
+    Ok(())
+}
+
+pub trait StyledName {
+    /// Returns this object's name, styled for display.
+    fn get_styled_name(&self) -> StyledString<'static>;
 }

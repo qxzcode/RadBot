@@ -515,52 +515,16 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
         }
 
         fn get_column_strings(col: &CardColumn<'_>) -> Vec<StyledString<'static>> {
-            let mut strings = vec![StyledString {
-                string: col.camp.camp_type.name,
-                style: CAMP,
-            }];
-            for person_slot in &col.person_slots {
-                strings.push(match *person_slot {
-                    Some(Person::Punk(_)) => StyledString {
-                        string: "Punk",
-                        style: PUNK,
-                    },
-                    Some(Person::NonPunk(NonPunk {
-                        person_type,
-                        is_injured,
-                    })) => StyledString {
-                        string: person_type.name,
-                        style: if is_injured {
-                            PERSON_INJURED
-                        } else {
-                            PERSON_READY
-                        },
-                    },
-                    None => StyledString {
-                        string: "<none>",
-                        style: EMPTY,
-                    },
-                });
-            }
-            strings.reverse(); // so that the top is first
-            strings
+            vec![
+                col.person_slots[1].get_styled_name(),
+                col.person_slots[0].get_styled_name(),
+                col.camp.get_styled_name(),
+            ]
         }
 
         writeln!(f, "{prefix}{HEADING}Columns:{RESET}")?;
-        let column_string_lists = self.columns.iter().map(get_column_strings).collect_vec();
-        let column_widths = column_string_lists
-            .iter()
-            .map(|column_strings| column_strings.iter().map(|s| s.string.len()).max().unwrap() + 4)
-            .collect_vec();
-        for row_index in 0..3 {
-            write!(f, "{prefix}  ")?;
-            for col_index in 0..3 {
-                let column_string = &column_string_lists[col_index][row_index];
-                let width = column_widths[col_index];
-                column_string.write_centered(f, width)?;
-            }
-            writeln!(f)?;
-        }
+        let column_string_lists = self.columns.iter().map(|col| get_column_strings(col)).collect_vec();
+        write_table(f, &column_string_lists, &prefix)?;
 
         writeln!(f, "{prefix}{HEADING}Events:{RESET}")?;
         for (i, event) in self.events.iter().enumerate() {
@@ -614,6 +578,27 @@ pub struct Camp<'ctype> {
     pub status: CampStatus,
 }
 
+impl StyledName for Camp<'_> {
+    /// Returns this camps's name, styled for display.
+    fn get_styled_name(&self) -> StyledString<'static> {
+        if let CampStatus::Destroyed = self.status {
+            StyledString {
+                string: "<destroyed>",
+                style: CAMP_DESTROYED,
+            }
+        } else {
+            StyledString {
+                string: self.camp_type.name,
+                style: match self.status {
+                    CampStatus::Undamaged => CAMP,
+                    CampStatus::Damaged => CAMP_DAMAGED,
+                    CampStatus::Destroyed => unreachable!(),
+                },
+            }
+        }
+    }
+}
+
 /// Enum representing the damage status of a camp.
 pub enum CampStatus {
     Undamaged,
@@ -629,11 +614,38 @@ pub enum Person<'ctype> {
 
 impl<'ctype> Person<'ctype> {
     /// Creates a fresh person from a person type.
-    fn new_non_punk(person_type: &'ctype PersonType) -> Person<'ctype> {
+    fn new_non_punk(person_type: &'ctype PersonType) -> Self {
         Person::NonPunk(NonPunk {
             person_type,
             is_injured: false,
         })
+    }
+}
+
+impl StyledName for Option<Person<'_>> {
+    /// Returns the name of the person, styled for display.
+    fn get_styled_name(&self) -> StyledString<'static> {
+        match self {
+            Some(Person::Punk(_)) => StyledString {
+                string: "Punk",
+                style: PUNK,
+            },
+            Some(Person::NonPunk(NonPunk {
+                person_type,
+                is_injured,
+            })) => StyledString {
+                string: person_type.name,
+                style: if *is_injured {
+                    PERSON_INJURED
+                } else {
+                    PERSON_READY
+                },
+            },
+            None => StyledString {
+                string: "<none>",
+                style: EMPTY,
+            },
+        }
     }
 }
 
@@ -653,7 +665,7 @@ pub struct CampType {
 }
 
 /// Supertrait for playable cards (people or events).
-pub trait PersonOrEventType {
+pub trait PersonOrEventType: StyledName {
     /// Returns the card's name.
     fn name(&self) -> &'static str;
 
@@ -674,7 +686,9 @@ pub trait PersonOrEventType {
     fn is_person(&self) -> bool {
         self.as_person().is_some()
     }
+}
 
+impl<T: PersonOrEventType> StyledName for T {
     /// Returns this card's name, styled for display.
     fn get_styled_name(&self) -> StyledString<'static> {
         StyledString {

@@ -84,8 +84,8 @@ impl PlayerController for RandomController {
 
     fn choose_play_location<'a, 'g, 'ctype: 'g>(
         &self,
-        game_state: &'g GameState<'ctype>,
-        person: &'ctype PersonType,
+        _game_state: &'g GameState<'ctype>,
+        _person: &'ctype PersonType,
         locations: &'a [PlayLocation],
     ) -> PlayLocation {
         let mut rng = thread_rng();
@@ -105,8 +105,8 @@ fn main() {
 
     let hc1 = HumanController { label: "Human 1" };
     let hc2 = HumanController { label: "Human 2" };
-    let hc1 = RandomController;
-    let hc2 = RandomController;
+    // let hc1 = RandomController;
+    // let hc2 = RandomController;
     let mut game_state = GameState::new(&camp_types, &person_types);
 
     for turn_num in 1.. {
