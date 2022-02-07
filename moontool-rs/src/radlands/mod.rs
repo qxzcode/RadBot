@@ -514,17 +514,15 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
             writeln!(f, "{prefix}  {EMPTY}<none>{RESET}")?;
         }
 
-        fn get_column_strings(col: &CardColumn<'_>) -> Vec<StyledString> {
+        writeln!(f, "{prefix}{HEADING}Columns:{RESET}")?;
+        let table_columns = self.columns.iter().map(|col| {
             vec![
                 col.person_slots[1].get_styled_name(),
                 col.person_slots[0].get_styled_name(),
                 col.camp.get_styled_name(),
             ]
-        }
-
-        writeln!(f, "{prefix}{HEADING}Columns:{RESET}")?;
-        let column_string_lists = self.columns.iter().map(|col| get_column_strings(col)).collect_vec();
-        write_table(f, &column_string_lists, &prefix)?;
+        });
+        write!(f, "{}", StyledTable::new(table_columns, &prefix))?;
 
         writeln!(f, "{prefix}{HEADING}Events:{RESET}")?;
         for (i, event) in self.events.iter().enumerate() {
@@ -619,15 +617,15 @@ impl<'ctype> Person<'ctype> {
     }
 }
 
-impl StyledName for Option<Person<'_>> {
+impl StyledName for Person<'_> {
     /// Returns the name of the person, styled for display.
     fn get_styled_name(&self) -> StyledString {
         match self {
-            Some(Person::Punk(_)) => StyledString::new("Punk", PUNK),
-            Some(Person::NonPunk(NonPunk {
+            Person::Punk(_) => StyledString::new("Punk", PUNK),
+            Person::NonPunk(NonPunk {
                 person_type,
                 is_injured,
-            })) => StyledString::new(
+            }) => StyledString::new(
                 person_type.name,
                 if *is_injured {
                     PERSON_INJURED
@@ -635,6 +633,15 @@ impl StyledName for Option<Person<'_>> {
                     PERSON_READY
                 },
             ),
+        }
+    }
+}
+
+impl StyledName for Option<Person<'_>> {
+    /// Returns the name of the person slot, styled for display.
+    fn get_styled_name(&self) -> StyledString {
+        match self {
+            Some(person) => person.get_styled_name(),
             None => StyledString::new("<none>", EMPTY),
         }
     }

@@ -47,6 +47,7 @@ pub static EMPTY: &str = "\x1b[90m";
 /// Style used for error text.
 pub static ERROR: &str = "\x1b[91m";
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StyledString {
     string: String,
     display_length: usize,
@@ -88,27 +89,51 @@ impl fmt::Display for StyledString {
     }
 }
 
-pub fn write_table(
-    f: &mut fmt::Formatter,
-    column_string_lists: &[Vec<StyledString>],
-    line_prefix: &str,
-) -> fmt::Result {
-    let column_widths = column_string_lists
-        .iter()
-        .map(|column_strings| column_strings.iter().map(|s| s.string.len()).max().unwrap() + 4)
-        .collect_vec();
-    for row_index in 0..3 {
-        write!(f, "{line_prefix}  ")?;
-        for col_index in 0..3 {
-            let column_string = &column_string_lists[col_index][row_index];
-            let width = column_widths[col_index];
-            column_string.write_centered(f, width)?;
-        }
-        writeln!(f)?;
-    }
-    Ok(())
+pub struct StyledTable<'a> {
+    column_string_lists: Vec<Vec<StyledString>>,
+    line_prefix: &'a str,
 }
 
+impl<'a> StyledTable<'a> {
+    /// Creates a new `StyledTable` with the given contents.
+    pub fn new(column_string_lists: impl IntoIterator<Item = Vec<StyledString>>, line_prefix: &'a str) -> Self {
+        let column_string_lists = column_string_lists.into_iter().collect_vec();
+
+        // validate the table structure
+        assert!(!column_string_lists.is_empty());
+        let mut column_lengths = column_string_lists.iter().map(|col| col.len());
+        let first_col_len = column_lengths.next().unwrap();
+        if column_lengths.any(|len| len != first_col_len) {
+            panic!("All columns must have the same number of rows");
+        }
+        assert!(first_col_len > 0);
+
+        Self {
+            column_string_lists,
+            line_prefix,
+        }
+    }
+}
+
+impl fmt::Display for StyledTable<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let column_widths = self.column_string_lists
+            .iter()
+            .map(|column_strings| column_strings.iter().map(|s| s.len()).max().unwrap() + 4)
+            .collect_vec();
+        for row_index in 0..3 {
+            write!(f, "{}  ", self.line_prefix)?;
+            for (col_index, col_width) in column_widths.iter().enumerate() {
+                let column_string = &self.column_string_lists[col_index][row_index];
+                column_string.write_centered(f, *col_width)?;
+            }
+            writeln!(f)?;
+        }
+        Ok(())
+    }
+}
+
+/// Trait for objects that have a name that's displayed with a style.
 pub trait StyledName {
     /// Returns this object's name, styled for display.
     fn get_styled_name(&self) -> StyledString;
