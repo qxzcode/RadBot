@@ -394,7 +394,7 @@ impl fmt::Display for Action<'_> {
         match *self {
             Action::PlayCard(card) => write!(f, "Play {} (costs {WATER}{} water{RESET})", card.styled_name(), card.cost()),
             Action::DrawCard => write!(f, "Draw a card (costs {WATER}2 water{RESET})"),
-            Action::JunkCard(card) => write!(f, "Junk {}", card.styled_name()),
+            Action::JunkCard(card) => write!(f, "Junk {} (effect: {:?})", card.styled_name(), card.junk_effect()),
             Action::UseAbility(/*TODO*/) => write!(f, "Use ability: [TODO]"),
             Action::EndTurn => write!(f, "End turn, taking {WATER}Water Silo{RESET} if possible"),
         }
