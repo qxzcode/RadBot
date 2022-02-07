@@ -64,7 +64,7 @@ impl PlayerController for HumanController {
         locations: &[PlayLocation],
     ) -> PlayLocation {
         let style_person_slot = |slot: &Option<Person>| match slot {
-            Some(person) => person.get_styled_name(),
+            Some(person) => person.styled_name(),
             None => StyledString::empty(),
         };
         let table_columns = game_state.cur_player().columns.iter().map(|col| {
@@ -72,7 +72,7 @@ impl PlayerController for HumanController {
                 style_person_slot(&col.person_slots[1]),
                 style_person_slot(&col.person_slots[0]),
                 StyledString::empty(),
-                col.camp.get_styled_name(),
+                col.camp.styled_name(),
             ]
         });
         let mut table_columns = table_columns.collect_vec();
@@ -85,7 +85,7 @@ impl PlayerController for HumanController {
         println!();
         print!("{}", StyledTable::new(table_columns, "").reduce_rows());
         let loc_number = prompt_for_number(
-            &format!("Choose a location to play {}: ", person.get_styled_name()),
+            &format!("Choose a location to play {}: ", person.styled_name()),
             1..=locations.len(),
         );
         locations[loc_number - 1]

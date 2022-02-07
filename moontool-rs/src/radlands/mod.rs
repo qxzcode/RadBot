@@ -392,9 +392,9 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
 impl fmt::Display for Action<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Action::PlayCard(card) => write!(f, "Play {} (costs {WATER}{} water{RESET})", card.get_styled_name(), card.cost()),
+            Action::PlayCard(card) => write!(f, "Play {} (costs {WATER}{} water{RESET})", card.styled_name(), card.cost()),
             Action::DrawCard => write!(f, "Draw a card (costs {WATER}2 water{RESET})"),
-            Action::JunkCard(card) => write!(f, "Junk {}", card.get_styled_name()),
+            Action::JunkCard(card) => write!(f, "Junk {}", card.styled_name()),
             Action::UseAbility(/*TODO*/) => write!(f, "Use ability: [TODO]"),
             Action::EndTurn => write!(f, "End turn, taking {WATER}Water Silo{RESET} if possible"),
         }
@@ -513,7 +513,7 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
 
         writeln!(f, "{prefix}{HEADING}Hand:{RESET}")?;
         for (card_type, count) in self.hand.iter() {
-            write!(f, "{prefix}  {}", card_type.get_styled_name())?;
+            write!(f, "{prefix}  {}", card_type.styled_name())?;
             if count > 1 {
                 writeln!(f, " (x{count})")?;
             } else {
@@ -529,9 +529,9 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
         writeln!(f, "{prefix}{HEADING}Columns:{RESET}")?;
         let table_columns = self.columns.iter().map(|col| {
             vec![
-                col.person_slots[1].get_styled_name(),
-                col.person_slots[0].get_styled_name(),
-                col.camp.get_styled_name(),
+                col.person_slots[1].styled_name(),
+                col.person_slots[0].styled_name(),
+                col.camp.styled_name(),
             ]
         });
         write!(f, "{}", StyledTable::new(table_columns, &prefix))?;
@@ -590,7 +590,7 @@ pub struct Camp<'ctype> {
 
 impl StyledName for Camp<'_> {
     /// Returns this camps's name, styled for display.
-    fn get_styled_name(&self) -> StyledString {
+    fn styled_name(&self) -> StyledString {
         if let CampStatus::Destroyed = self.status {
             StyledString::new("<destroyed>", CAMP_DESTROYED)
         } else {
@@ -631,7 +631,7 @@ impl<'ctype> Person<'ctype> {
 
 impl StyledName for Person<'_> {
     /// Returns the name of the person, styled for display.
-    fn get_styled_name(&self) -> StyledString {
+    fn styled_name(&self) -> StyledString {
         match self {
             Person::Punk(_) => StyledString::new("Punk", PUNK),
             Person::NonPunk(NonPunk {
@@ -651,9 +651,9 @@ impl StyledName for Person<'_> {
 
 impl StyledName for Option<Person<'_>> {
     /// Returns the name of the person slot, styled for display.
-    fn get_styled_name(&self) -> StyledString {
+    fn styled_name(&self) -> StyledString {
         match self {
-            Some(person) => person.get_styled_name(),
+            Some(person) => person.styled_name(),
             None => StyledString::new("<none>", EMPTY),
         }
     }
@@ -700,7 +700,7 @@ pub trait PersonOrEventType: StyledName {
 
 impl<T: PersonOrEventType> StyledName for T {
     /// Returns this card's name, styled for display.
-    fn get_styled_name(&self) -> StyledString {
+    fn styled_name(&self) -> StyledString {
         StyledString::new(
             self.name(),
             if self.is_person() {

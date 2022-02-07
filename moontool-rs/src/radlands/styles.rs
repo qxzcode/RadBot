@@ -187,5 +187,5 @@ impl fmt::Display for StyledTable<'_> {
 /// Trait for objects that have a name that's displayed with a style.
 pub trait StyledName {
     /// Returns this object's name, styled for display.
-    fn get_styled_name(&self) -> StyledString;
+    fn styled_name(&self) -> StyledString;
 }
