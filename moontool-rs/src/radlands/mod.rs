@@ -263,6 +263,16 @@ impl PlayLocation {
         assert!(row < 2);
         Self { column, row }
     }
+
+    /// Returns the column (0, 1, or 2).
+    pub fn column(&self) -> u8 {
+        self.column
+    }
+
+    /// Returns the row (0 or 1).
+    pub fn row(&self) -> u8 {
+        self.row
+    }
 }
 
 /// An action that can be performed by a player during their turn.
@@ -364,8 +374,8 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
         let play_loc = cur_controller.choose_play_location(game_state, person, &play_locs);
 
         // place the card onto the board
-        let col_index = play_loc.column as usize;
-        let row_index = play_loc.row as usize;
+        let col_index = play_loc.column() as usize;
+        let row_index = play_loc.row() as usize;
         let col = &mut game_state.cur_player_mut().columns[col_index];
         if let Some(old_person) = col.person_slots[row_index].replace(Person::new_non_punk(person))
         {

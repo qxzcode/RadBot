@@ -1,6 +1,7 @@
 mod cards;
 mod radlands;
 
+use itertools::Itertools;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use std::io;
@@ -62,7 +63,32 @@ impl PlayerController for HumanController {
         person: &'ctype PersonType,
         locations: &'a [PlayLocation],
     ) -> PlayLocation {
-        todo!()
+        let style_person_slot = |slot: &Option<Person>| match slot {
+            Some(person) => person.get_styled_name(),
+            None => StyledString::empty(),
+        };
+        let table_columns = game_state.cur_player().columns.iter().map(|col| {
+            vec![
+                style_person_slot(&col.person_slots[1]),
+                style_person_slot(&col.person_slots[0]),
+                StyledString::empty(),
+                col.camp.get_styled_name(),
+            ]
+        });
+        let mut table_columns = table_columns.collect_vec();
+
+        for (i, loc) in locations.iter().enumerate() {
+            table_columns[loc.column() as usize][((1 - loc.row()) * 2) as usize] =
+                StyledString::plain(&format!("({}) play here", i + 1));
+        }
+
+        println!();
+        print!("{}", StyledTable::new(table_columns, "").reduce_rows());
+        let loc_number = prompt_for_number(
+            &format!("Choose a location to play {}: ", person.get_styled_name()),
+            1..=locations.len(),
+        );
+        locations[loc_number - 1]
     }
 }
 

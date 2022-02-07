@@ -62,9 +62,27 @@ impl StyledString {
         }
     }
 
+    /// Creates a new `StyledString` with the given content and plain styling.
+    pub fn plain(string: &str) -> Self {
+        Self::new(string, RESET)
+    }
+
+    /// Creates a new, empty `StyledString`.
+    pub fn empty() -> Self {
+        Self {
+            string: String::new(),
+            display_length: 0,
+        }
+    }
+
     /// Returns the length of the string when displayed.
     pub fn len(&self) -> usize {
         self.display_length
+    }
+
+    /// Returns whether the string is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn write_centered(&self, f: &mut fmt::Formatter, width: usize) -> fmt::Result {
@@ -96,7 +114,10 @@ pub struct StyledTable<'a> {
 
 impl<'a> StyledTable<'a> {
     /// Creates a new `StyledTable` with the given contents.
-    pub fn new(column_string_lists: impl IntoIterator<Item = Vec<StyledString>>, line_prefix: &'a str) -> Self {
+    pub fn new(
+        column_string_lists: impl IntoIterator<Item = Vec<StyledString>>,
+        line_prefix: &'a str,
+    ) -> Self {
         let column_string_lists = column_string_lists.into_iter().collect_vec();
 
         // validate the table structure
@@ -113,15 +134,45 @@ impl<'a> StyledTable<'a> {
             line_prefix,
         }
     }
+
+    /// Returns the number of rows in the table.
+    pub fn row_count(&self) -> usize {
+        self.column_string_lists[0].len()
+    }
+
+    /// Reduces the number of rows in the table by removing empty cells, if possible.
+    pub fn reduce_rows(&mut self) -> &mut Self {
+        // while all columns have at least one empty cell...
+        while self
+            .column_string_lists
+            .iter()
+            .all(|col| col.iter().any(|cell| cell.is_empty()))
+        {
+            // Remove the first empty cell in each column.
+            for col in &mut self.column_string_lists {
+                let empty_cell_index = col.iter().position(|cell| cell.is_empty()).unwrap();
+                col.remove(empty_cell_index);
+            }
+        }
+
+        // shift non-empty cells down to the bottom
+        for col in &mut self.column_string_lists {
+            col.sort_by(|a, b| b.is_empty().cmp(&a.is_empty()));
+        }
+
+        // return self
+        self
+    }
 }
 
 impl fmt::Display for StyledTable<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let column_widths = self.column_string_lists
+        let column_widths = self
+            .column_string_lists
             .iter()
             .map(|column_strings| column_strings.iter().map(|s| s.len()).max().unwrap() + 4)
             .collect_vec();
-        for row_index in 0..3 {
+        for row_index in 0..self.row_count() {
             write!(f, "{}  ", self.line_prefix)?;
             for (col_index, col_width) in column_widths.iter().enumerate() {
                 let column_string = &self.column_string_lists[col_index][row_index];
