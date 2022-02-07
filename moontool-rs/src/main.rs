@@ -57,11 +57,11 @@ impl PlayerController for HumanController {
         &actions[action_number - 1]
     }
 
-    fn choose_play_location<'a, 'g, 'ctype: 'g>(
+    fn choose_play_location<'g, 'ctype: 'g>(
         &self,
         game_state: &'g GameState<'ctype>,
         person: &'ctype PersonType,
-        locations: &'a [PlayLocation],
+        locations: &[PlayLocation],
     ) -> PlayLocation {
         let style_person_slot = |slot: &Option<Person>| match slot {
             Some(person) => person.get_styled_name(),
@@ -108,11 +108,11 @@ impl PlayerController for RandomController {
         chosen_action
     }
 
-    fn choose_play_location<'a, 'g, 'ctype: 'g>(
+    fn choose_play_location<'g, 'ctype: 'g>(
         &self,
         _game_state: &'g GameState<'ctype>,
         _person: &'ctype PersonType,
-        locations: &'a [PlayLocation],
+        locations: &[PlayLocation],
     ) -> PlayLocation {
         let mut rng = thread_rng();
         let chosen_location = locations

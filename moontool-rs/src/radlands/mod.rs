@@ -307,9 +307,9 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
                 game_state.spend_water(card.cost());
                 game_state.cur_player_mut().hand.remove_one(card);
 
-                if let Some(person) = card.as_person() {
+                if let Some(person_type) = card.as_person() {
                     // play the person onto the board
-                    Action::play_person(game_state, cur_controller, person);
+                    Action::play_person(game_state, cur_controller, person_type);
                 } else {
                     todo!();
                 }
@@ -384,6 +384,8 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
             let replaced_slot = col.person_slots[other_row_index].replace(old_person);
             assert!(replaced_slot.is_none());
         }
+
+        // TODO: activate any on-play effect of the person
     }
 }
 
@@ -406,11 +408,11 @@ pub trait PlayerController {
         actions: &'a [Action<'ctype>],
     ) -> &'a Action<'ctype>;
 
-    fn choose_play_location<'a, 'g, 'ctype: 'g>(
+    fn choose_play_location<'g, 'ctype: 'g>(
         &self,
         game_state: &'g GameState<'ctype>,
         person: &'ctype PersonType,
-        locations: &'a [PlayLocation],
+        locations: &[PlayLocation],
     ) -> PlayLocation;
 }
 
