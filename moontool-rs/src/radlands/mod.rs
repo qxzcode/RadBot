@@ -1,5 +1,7 @@
 pub mod camps;
+pub mod locations;
 pub mod people;
+pub mod player_state;
 pub mod styles;
 
 use by_address::ByAddress;
@@ -10,8 +12,11 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::mem;
 
-use crate::cards::Cards;
-use styles::*;
+use self::camps::CampType;
+use self::locations::*;
+use self::people::PersonType;
+use self::player_state::*;
+use self::styles::*;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum GameResult {
@@ -125,6 +130,86 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         Ok(())
     }
 
+    /// Has the current player damage an unprotected opponent card.
+    pub fn damage_enemy(
+        &mut self,
+        cur_controller: &dyn PlayerController,
+    ) -> Result<(), GameResult> {
+        // get all possible targets
+        let target_locs = self.other_player().unprotected_cards().collect_vec();
+
+        // ask the player which one to damage
+        let target_loc = cur_controller.choose_card_to_damage(self, &target_locs);
+
+        // damage the card
+        self.damage_card(target_loc)
+    }
+
+    /// Has the current player injure an unprotected opponent person.
+    pub fn injure_enemy(&mut self, cur_controller: &dyn PlayerController) {
+        // get all possible targets
+        let target_locs = self.other_player().unprotected_people().collect_vec();
+
+        // ask the player which one to injure
+        let target_loc = cur_controller.choose_card_to_damage(self, &target_locs);
+
+        // injure the person
+        self.damage_card(target_loc).expect("injure_enemy should not end the game");
+    }
+
+    /// Damages the card at the given location.
+    /// Panics if there is no card there.
+    pub fn damage_card(&mut self, loc: CardLocation) -> Result<(), GameResult> {
+        let player_state = match loc.player() {
+            Player::Player1 => &mut self.player1,
+            Player::Player2 => &mut self.player2,
+        };
+
+        match loc.row().to_person_index() {
+            Ok(person_row_index) => {
+                // damage the person
+                let slot = &mut player_state.columns[loc.column().as_usize()].person_slots
+                    [person_row_index.as_usize()];
+                let person = slot.as_mut().expect("Tried to damage an empty person slot");
+                match person {
+                    Person::Punk(card_type) => {
+                        // return the card to the top of the deck
+                        self.deck.push(*card_type);
+
+                        // destroy the punk
+                        *slot = None;
+                    }
+                    Person::NonPunk(NonPunk {
+                        person_type,
+                        is_injured,
+                    }) => {
+                        if *is_injured {
+                            // the person was already injured, so now it's dead;
+                            // discard the card and empty the slot
+                            self.discard.push(PersonOrEventType::Person(*person_type));
+                            *slot = None;
+                        } else {
+                            // injure the person
+                            *is_injured = true;
+                        }
+                    }
+                }
+            }
+            Err(_) => {
+                // damage the camp in the given column and check for win condition
+                let no_camps_left = player_state.damage_camp(loc.column());
+                if no_camps_left {
+                    return Err(match loc.player() {
+                        Player::Player1 => GameResult::P2Wins,
+                        Player::Player2 => GameResult::P1Wins,
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     /// Draws a card from the deck.
     pub fn draw_card(&'g mut self) -> Result<PersonOrEventType<'ctype>, GameResult> {
         if self.deck.is_empty() {
@@ -185,45 +270,6 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         Ok(())
     }
 
-    /// Asks the current player's controller to choose a location, then plays the given person
-    /// onto that location.
-    fn play_person(&'g mut self, cur_controller: &dyn PlayerController, person: Person<'ctype>) {
-        // determine possible locations to place the card
-        let mut play_locs = Vec::new();
-        for (col_index, col) in self.cur_player().columns.iter().enumerate() {
-            match col.people().count() {
-                0 => {
-                    // no people in this column, so only one possible play location
-                    play_locs.push(PlayLocation::new(col_index as u8, 0));
-                }
-                1 => {
-                    // one person in this column, so two possible play locations
-                    play_locs.push(PlayLocation::new(col_index as u8, 0));
-                    play_locs.push(PlayLocation::new(col_index as u8, 1));
-                }
-                _ => {
-                    // two people in this column, so no possible play locations
-                }
-            }
-        }
-
-        // ask the player controller which location to play the card into
-        let play_loc = cur_controller.choose_play_location(self, &person, &play_locs);
-
-        // place the card onto the board
-        let col_index = play_loc.column() as usize;
-        let row_index = play_loc.row() as usize;
-        let col = &mut self.cur_player_mut().columns[col_index];
-        if let Some(old_person) = col.person_slots[row_index].replace(person) {
-            // if there was a person in the slot, move it to the other slot
-            let other_row_index = 1 - row_index;
-            let replaced_slot = col.person_slots[other_row_index].replace(old_person);
-            assert!(replaced_slot.is_none());
-        }
-
-        // TODO: activate any on-play effect of the person
-    }
-
     /// Plays or advances the current player's Raiders event.
     pub fn raid(&'g mut self) {
         // search for the Raiders event in the event queue
@@ -248,7 +294,46 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
         // if we get here, the raiders event was not found in the event queue;
         // add it to the queue
-        todo!();
+        todo!("add Raiders event to event queue");
+    }
+
+    /// Asks the current player's controller to choose a location, then plays the given person
+    /// onto that location.
+    fn play_person(&'g mut self, cur_controller: &dyn PlayerController, person: Person<'ctype>) {
+        // determine possible locations to place the card
+        let mut play_locs = Vec::new();
+        for (col_index, col) in self.cur_player().enumerate_columns() {
+            match col.people().count() {
+                0 => {
+                    // no people in this column, so only one possible play location
+                    play_locs.push(PlayLocation::new(col_index, 0.into()));
+                }
+                1 => {
+                    // one person in this column, so two possible play locations
+                    play_locs.push(PlayLocation::new(col_index, 0.into()));
+                    play_locs.push(PlayLocation::new(col_index, 1.into()));
+                }
+                _ => {
+                    // two people in this column, so no possible play locations
+                }
+            }
+        }
+
+        // ask the player controller which location to play the card into
+        let play_loc = cur_controller.choose_play_location(self, &person, &play_locs);
+
+        // place the card onto the board
+        let col_index = play_loc.column() as usize;
+        let row_index = play_loc.row() as usize;
+        let col = &mut self.cur_player_mut().columns[col_index];
+        if let Some(old_person) = col.person_slots[row_index].replace(person) {
+            // if there was a person in the slot, move it to the other slot
+            let other_row_index = 1 - row_index;
+            let replaced_slot = col.person_slots[other_row_index].replace(old_person);
+            assert!(replaced_slot.is_none());
+        }
+
+        // TODO: activate any on-play effect of the person
     }
 
     pub fn cur_player_mut(&'g mut self) -> &'g mut PlayerState<'ctype> {
@@ -264,6 +349,14 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
             &self.player1
         } else {
             &self.player2
+        }
+    }
+
+    pub fn other_player(&'g self) -> &'g PlayerState<'ctype> {
+        if self.is_player1_turn {
+            &self.player2
+        } else {
+            &self.player1
         }
     }
 }
@@ -295,35 +388,6 @@ impl fmt::Display for GameState<'_> {
             self.deck.len(),
             self.discard.len()
         )
-    }
-}
-
-/// A location at which to play a person onto the board.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PlayLocation {
-    /// The column to play the person into (0, 1, or 2).
-    column: u8,
-
-    /// The row to play the person into (0 or 1).
-    row: u8,
-}
-
-impl PlayLocation {
-    /// Creates a new PlayLocation.
-    pub fn new(column: u8, row: u8) -> Self {
-        assert!(column < 3);
-        assert!(row < 2);
-        Self { column, row }
-    }
-
-    /// Returns the column (0, 1, or 2).
-    pub fn column(&self) -> u8 {
-        self.column
-    }
-
-    /// Returns the row (0 or 1).
-    pub fn row(&self) -> u8 {
-        self.row
     }
 }
 
@@ -366,7 +430,7 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
                     }
                     PersonOrEventType::Event(event_type) => {
                         // add the event to the event queue
-                        todo!();
+                        todo!("add event to event queue");
                     }
                 }
 
@@ -389,7 +453,7 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
                 Ok(false)
             },
             Action::UseAbility(/*TODO*/) => {
-                todo!();
+                todo!("perform Action::UseAbility");
                 Ok(false)
             },
             Action::EndTurn => {
@@ -426,261 +490,12 @@ pub trait PlayerController {
         person: &Person<'ctype>,
         locations: &[PlayLocation],
     ) -> PlayLocation;
-}
 
-/// Represents the state of a player's board and hand.
-pub struct PlayerState<'ctype> {
-    /// The cards in the player's hand, not including Water Silo.
-    pub hand: Cards<PersonOrEventType<'ctype>>,
-
-    /// When it is not this player's turn, whether this player has Water Silo
-    /// in their hand. (They are assumed to not have it in their hand when it
-    /// *is* this player's turn.)
-    pub has_water_silo: bool,
-
-    /// The three columns of the player's board.
-    pub columns: [CardColumn<'ctype>; 3],
-
-    /// The three event slots of the player's board.
-    pub events: [Option<&'ctype (dyn EventType + 'ctype)>; 3],
-}
-
-impl<'g, 'ctype: 'g> PlayerState<'ctype> {
-    /// Creates a new `PlayerState` with the given camps, drawing an initial
-    /// hand from the given deck.
-    pub fn new(camps: &[&'ctype CampType], deck: &mut Vec<PersonOrEventType<'ctype>>) -> Self {
-        // determine the number of starting cards from the set of camps
-        assert_eq!(camps.len(), 3);
-        let hand_size: usize = camps.iter().map(|c| c.num_initial_cards as usize).sum();
-
-        // draw the top hand_size cards from the deck
-        let deck_cut_index = deck.len() - hand_size;
-        let hand = Cards::from_iter(deck.drain(deck_cut_index..));
-
-        PlayerState {
-            hand,
-            has_water_silo: false,
-            columns: [
-                CardColumn::new(camps[0]),
-                CardColumn::new(camps[1]),
-                CardColumn::new(camps[2]),
-            ],
-            events: [None, None, None],
-        }
-    }
-
-    /// Returns whether this player has an empty person slot.
-    pub fn has_empty_person_slot(&self) -> bool {
-        self.columns
-            .iter()
-            .any(|col| col.person_slots.iter().any(|slot| slot.is_none()))
-    }
-
-    pub fn actions(&self, game: &'g GameState<'ctype>) -> Vec<Action<'ctype>> {
-        let mut actions = Vec::new();
-
-        // actions to play or junk a card
-        let can_play_card = self.has_empty_person_slot();
-        for card_type in self.hand.iter_unique() {
-            if can_play_card && game.cur_player_water >= card_type.cost() {
-                actions.push(Action::PlayCard(card_type));
-            }
-            actions.push(Action::JunkCard(card_type));
-        }
-
-        // action to pay 2 water to draw a card
-        // (limited to 1 use per turn)
-        if game.cur_player_water >= 2 && !game.has_paid_to_draw {
-            actions.push(Action::DrawCard);
-        }
-
-        // actions to use an ability
-        for person in self.columns[0].people() {
-            match person {
-                Person::Punk(_) => {
-                    // punks don't have abilities
-                    // TODO: unless they're given one by another card
-                }
-                Person::NonPunk(NonPunk {
-                    person_type,
-                    is_injured,
-                }) => {
-                    // TODO: check if they're ready...
-                    actions.push(Action::UseAbility(/*TODO*/));
-                }
-            }
-        }
-
-        // action to end turn (and take Water Silo if possible)
-        actions.push(Action::EndTurn);
-
-        actions
-    }
-
-    fn fmt(&self, f: &mut fmt::Formatter, is_cur_player: bool) -> fmt::Result {
-        let prefix = format!("\x1b[{};1m|{RESET} ", if is_cur_player { 93 } else { 90 });
-
-        writeln!(f, "{prefix}{HEADING}Hand:{RESET}")?;
-        for (card_type, count) in self.hand.iter() {
-            write!(f, "{prefix}  {}", card_type.styled_name())?;
-            if count > 1 {
-                writeln!(f, " (x{count})")?;
-            } else {
-                writeln!(f)?;
-            }
-        }
-        if self.has_water_silo {
-            writeln!(f, "{prefix}  {WATER}Water Silo{RESET}")?;
-        } else if self.hand.is_empty() {
-            writeln!(f, "{prefix}  {EMPTY}<none>{RESET}")?;
-        }
-
-        writeln!(f, "{prefix}{HEADING}Columns:{RESET}")?;
-        let table_columns = self.columns.iter().map(|col| {
-            vec![
-                col.person_slots[1].styled_name(),
-                col.person_slots[0].styled_name(),
-                col.camp.styled_name(),
-            ]
-        });
-        write!(f, "{}", StyledTable::new(table_columns, &prefix))?;
-
-        writeln!(f, "{prefix}{HEADING}Events:{RESET}")?;
-        for (i, event) in self.events.iter().enumerate() {
-            write!(f, "{prefix}  [{}]  ", i + 1)?;
-            if let Some(event) = event {
-                writeln!(f, "{}", event.name())?;
-            } else {
-                writeln!(f, "{EMPTY}<none>{RESET}")?;
-            }
-        }
-
-        Ok(())
-    }
-}
-
-pub struct CardColumn<'ctype> {
-    /// The column's camp.
-    pub camp: Camp<'ctype>,
-
-    /// The people slots in the column.
-    /// The first slot (index 0) is the one in the back.
-    pub person_slots: [Option<Person<'ctype>>; 2],
-}
-
-impl<'ctype> CardColumn<'ctype> {
-    /// Creates a new column with the given camp.
-    pub fn new(camp_type: &'ctype CampType) -> Self {
-        CardColumn {
-            camp: Camp {
-                camp_type,
-                status: CampStatus::Undamaged,
-            },
-            person_slots: [None, None],
-        }
-    }
-
-    /// Returns an iterator over the people in the column.
-    pub fn people(&self) -> impl Iterator<Item = &Person<'ctype>> {
-        self.person_slots
-            .iter()
-            .filter_map(|person| person.as_ref())
-    }
-}
-
-/// A camp on the board.
-pub struct Camp<'ctype> {
-    /// The camp type.
-    pub camp_type: &'ctype CampType,
-
-    /// The damage status of the camp.
-    pub status: CampStatus,
-}
-
-impl StyledName for Camp<'_> {
-    /// Returns this camps's name, styled for display.
-    fn styled_name(&self) -> StyledString {
-        if let CampStatus::Destroyed = self.status {
-            StyledString::new("<destroyed>", CAMP_DESTROYED)
-        } else {
-            StyledString::new(
-                self.camp_type.name,
-                match self.status {
-                    CampStatus::Undamaged => CAMP,
-                    CampStatus::Damaged => CAMP_DAMAGED,
-                    CampStatus::Destroyed => unreachable!(),
-                },
-            )
-        }
-    }
-}
-
-/// Enum representing the damage status of a camp.
-pub enum CampStatus {
-    Undamaged,
-    Damaged,
-    Destroyed,
-}
-
-/// A person played on the board (a punk or face-up person).
-pub enum Person<'ctype> {
-    Punk(PersonOrEventType<'ctype>),
-    NonPunk(NonPunk<'ctype>),
-}
-
-impl<'ctype> Person<'ctype> {
-    /// Creates a fresh person from a person type.
-    fn new_non_punk(person_type: &'ctype PersonType) -> Self {
-        Person::NonPunk(NonPunk {
-            person_type,
-            is_injured: false,
-        })
-    }
-}
-
-impl StyledName for Person<'_> {
-    /// Returns the name of the person, styled for display.
-    fn styled_name(&self) -> StyledString {
-        match self {
-            Person::Punk(_) => StyledString::new("Punk", PUNK),
-            Person::NonPunk(NonPunk {
-                person_type,
-                is_injured,
-            }) => StyledString::new(
-                person_type.name,
-                if *is_injured {
-                    PERSON_INJURED
-                } else {
-                    PERSON_READY
-                },
-            ),
-        }
-    }
-}
-
-impl StyledName for Option<Person<'_>> {
-    /// Returns the name of the person slot, styled for display.
-    fn styled_name(&self) -> StyledString {
-        match self {
-            Some(person) => person.styled_name(),
-            None => StyledString::new("<none>", EMPTY),
-        }
-    }
-}
-
-/// A non-punk (face-up) person played on the board.
-pub struct NonPunk<'ctype> {
-    person_type: &'ctype PersonType,
-    is_injured: bool,
-}
-
-/// A type of camp card.
-pub struct CampType {
-    /// The camp's name.
-    pub name: &'static str,
-
-    /// The number of cards this camp grants at the start of the game.
-    pub num_initial_cards: u32,
+    fn choose_card_to_damage<'g, 'ctype: 'g>(
+        &self,
+        game_state: &'g GameState<'ctype>,
+        target_locs: &[CardLocation],
+    ) -> CardLocation;
 }
 
 /// Enum for playable card types (people or events).
@@ -739,7 +554,7 @@ impl Hash for PersonOrEventType<'_> {
 // compare by address
 impl PartialEq for PersonOrEventType<'_> {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
+        match (*self, *other) {
             (PersonOrEventType::Person(person), PersonOrEventType::Person(other_person)) => {
                 ByAddress(person) == ByAddress(other_person)
             }
@@ -751,29 +566,6 @@ impl PartialEq for PersonOrEventType<'_> {
     }
 }
 impl Eq for PersonOrEventType<'_> {}
-
-/// A type of person card.
-pub struct PersonType {
-    /// The person's name.
-    pub name: &'static str,
-
-    /// How many of this person type are in the deck.
-    pub num_in_deck: u32,
-
-    /// The person's junk effect.
-    pub junk_effect: IconEffect,
-
-    /// The water cost to play this person.
-    pub cost: u32,
-    // TODO: abilities
-}
-
-impl StyledName for PersonType {
-    /// Returns this person's name, styled for display.
-    fn styled_name(&self) -> StyledString {
-        StyledString::new(self.name, PERSON_READY)
-    }
-}
 
 /// Trait for a type of event card.
 pub trait EventType {
@@ -834,7 +626,7 @@ impl EventType for RaidersEvent {
     }
 
     fn resolve<'g, 'ctype: 'g>(&self, game_state: &'g mut GameState<'ctype>) {
-        todo!();
+        todo!("resolve Raiders event");
     }
 
     fn as_raiders(&self) -> Option<&RaidersEvent> {
@@ -855,21 +647,34 @@ pub enum IconEffect {
 }
 
 impl IconEffect {
+    /// Returns whether this icon effect can be performed given the current game state.
+    pub fn can_perform(&self, game_state: &GameState) -> bool {
+        match self {
+            IconEffect::Damage => true, // if there's nothing to damage, the game is over!
+            IconEffect::Injure => game_state.other_player().people().next().is_some(),
+            IconEffect::Restore => todo!("check if Restore effect can be performed"),
+            IconEffect::Draw => true, // it's always possible to draw a card
+            IconEffect::Water => true, // it's always possible to gain water
+            IconEffect::GainPunk => game_state.cur_player().has_empty_person_slot(),
+            IconEffect::Raid => todo!("check if Raid effect can be performed"),
+        }
+    }
+
     /// Performs the effect for the current player.
-    pub fn perform<'g, 'ctype: 'g>(
+    pub fn perform(
         &self,
-        game_state: &'g mut GameState<'ctype>,
+        game_state: &mut GameState<'_>,
         cur_controller: &dyn PlayerController,
     ) -> Result<(), GameResult> {
         match *self {
             IconEffect::Damage => {
-                todo!();
+                game_state.damage_enemy(cur_controller)?;
             }
             IconEffect::Injure => {
-                todo!();
+                game_state.injure_enemy(cur_controller);
             }
             IconEffect::Restore => {
-                todo!();
+                todo!("perform IconEffect::Restore");
             }
             IconEffect::Draw => {
                 game_state.draw_card_into_hand()?;

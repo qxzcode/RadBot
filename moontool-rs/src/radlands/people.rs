@@ -1,4 +1,28 @@
-use super::{IconEffect, PersonType};
+use super::styles::*;
+use super::IconEffect;
+
+/// A type of person card.
+pub struct PersonType {
+    /// The person's name.
+    pub name: &'static str,
+
+    /// How many of this person type are in the deck.
+    pub num_in_deck: u32,
+
+    /// The person's junk effect.
+    pub junk_effect: IconEffect,
+
+    /// The water cost to play this person.
+    pub cost: u32,
+    // TODO: abilities
+}
+
+impl StyledName for PersonType {
+    /// Returns this person's name, styled for display.
+    fn styled_name(&self) -> StyledString {
+        StyledString::new(self.name, PERSON_READY)
+    }
+}
 
 pub fn get_person_types() -> Vec<PersonType> {
     vec![

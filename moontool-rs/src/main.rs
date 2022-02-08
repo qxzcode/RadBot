@@ -9,6 +9,8 @@ use std::io::Write;
 use std::ops::RangeBounds;
 use std::str::FromStr;
 
+use radlands::locations::*;
+use radlands::player_state::*;
 use radlands::styles::*;
 use radlands::*;
 
@@ -90,6 +92,14 @@ impl PlayerController for HumanController {
         );
         locations[loc_number - 1]
     }
+
+    fn choose_card_to_damage<'g, 'ctype: 'g>(
+        &self,
+        game_state: &'g GameState<'ctype>,
+        target_locs: &[CardLocation],
+    ) -> CardLocation {
+        todo!()
+    }
 }
 
 struct RandomController;
@@ -120,6 +130,19 @@ impl PlayerController for RandomController {
             .expect("choose_play_location called with empty locations list");
         println!("{BOLD}RandomController chose location:{RESET} {chosen_location:?}");
         *chosen_location
+    }
+
+    fn choose_card_to_damage<'g, 'ctype: 'g>(
+        &self,
+        _game_state: &'g GameState<'ctype>,
+        target_locs: &[CardLocation],
+    ) -> CardLocation {
+        let mut rng = thread_rng();
+        let chosen_target = target_locs
+            .choose(&mut rng)
+            .expect("choose_card_to_damage called with empty target_locs list");
+        println!("{BOLD}RandomController chose target:{RESET} {chosen_target:?}");
+        *chosen_target
     }
 }
 

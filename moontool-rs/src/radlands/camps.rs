@@ -1,4 +1,11 @@
-use super::CampType;
+/// A type of camp card.
+pub struct CampType {
+    /// The camp's name.
+    pub name: &'static str,
+
+    /// The number of cards this camp grants at the start of the game.
+    pub num_initial_cards: u32,
+}
 
 pub fn get_camp_types() -> Vec<CampType> {
     vec![
