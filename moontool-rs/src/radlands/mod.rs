@@ -2,10 +2,12 @@ pub mod camps;
 pub mod people;
 pub mod styles;
 
+use by_address::ByAddress;
 use itertools::Itertools;
 use rand::seq::SliceRandom;
 use rand::{thread_rng, Rng};
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::mem;
 
 use crate::cards::Cards;
@@ -22,8 +24,8 @@ pub struct GameState<'ctype> {
     player1: PlayerState<'ctype>,
     player2: PlayerState<'ctype>,
 
-    deck: Vec<&'ctype (dyn PersonOrEventType + 'ctype)>,
-    discard: Vec<&'ctype (dyn PersonOrEventType + 'ctype)>,
+    deck: Vec<PersonOrEventType<'ctype>>,
+    discard: Vec<PersonOrEventType<'ctype>>,
 
     /// Whether it is currently player 1's turn.
     is_player1_turn: bool,
@@ -42,10 +44,10 @@ pub struct GameState<'ctype> {
 impl<'g, 'ctype: 'g> GameState<'ctype> {
     pub fn new(camp_types: &'ctype [CampType], person_types: &'ctype [PersonType]) -> Self {
         // populate the deck and shuffle it
-        let mut deck = Vec::<&dyn PersonOrEventType>::new();
+        let mut deck = Vec::new();
         for person_type in person_types {
-            for _ in 0..person_type.num_in_deck() {
-                deck.push(person_type);
+            for _ in 0..person_type.num_in_deck {
+                deck.push(PersonOrEventType::Person(person_type));
             }
         }
         deck.shuffle(&mut thread_rng());
@@ -124,7 +126,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
     }
 
     /// Draws a card from the deck.
-    pub fn draw_card(&'g mut self) -> Result<&'ctype dyn PersonOrEventType, GameResult> {
+    pub fn draw_card(&'g mut self) -> Result<PersonOrEventType<'ctype>, GameResult> {
         if self.deck.is_empty() {
             if self.discard.is_empty() {
                 // Theoretically, this could legitimately happen if one or more players
@@ -224,10 +226,11 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
     /// Plays or advances the current player's Raiders event.
     pub fn raid(&'g mut self) {
+        // search for the Raiders event in the event queue
         for i in 0..self.cur_player().events.len() {
             if let Some(event) = self.cur_player().events[i] {
                 if let Some(raiders) = event.as_raiders() {
-                    // found the raiders event in the event queue
+                    // found the raiders event
                     if i == 0 {
                         // it's the first event, so resolve it
                         raiders.resolve(self);
@@ -238,9 +241,14 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                             events[i - 1] = events[i].take();
                         }
                     }
+                    return;
                 }
             }
         }
+
+        // if we get here, the raiders event was not found in the event queue;
+        // add it to the queue
+        todo!();
     }
 
     pub fn cur_player_mut(&'g mut self) -> &'g mut PlayerState<'ctype> {
@@ -322,13 +330,13 @@ impl PlayLocation {
 /// An action that can be performed by a player during their turn.
 pub enum Action<'ctype> {
     /// Play a person or event card from the hand onto the board.
-    PlayCard(&'ctype (dyn PersonOrEventType + 'ctype)),
+    PlayCard(PersonOrEventType<'ctype>),
 
     /// Draw a card (costs 2 water).
     DrawCard,
 
     /// Junk a card from the hand to use its junk effect.
-    JunkCard(&'ctype (dyn PersonOrEventType + 'ctype)),
+    JunkCard(PersonOrEventType<'ctype>),
 
     /// Use an ability of a ready person or camp.
     UseAbility(/*TODO*/),
@@ -351,15 +359,17 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
                 game_state.spend_water(card.cost());
                 game_state.cur_player_mut().hand.remove_one(card);
 
-                if let Some(person_type) = card.as_person() {
-                    // play the person onto the board
-                    game_state.play_person(cur_controller, Person::new_non_punk(person_type));
-                } else {
-                    todo!();
+                match card {
+                    PersonOrEventType::Person(person_type) => {
+                        // play the person onto the board
+                        game_state.play_person(cur_controller, Person::new_non_punk(person_type));
+                    }
+                    PersonOrEventType::Event(event_type) => {
+                        // add the event to the event queue
+                        todo!();
+                    }
                 }
 
-                // let person = Person::new_non_punk(card);
-                // game_state.cur_player().columns[0].people.push(person);
                 Ok(false)
             },
             Action::DrawCard => {
@@ -421,7 +431,7 @@ pub trait PlayerController {
 /// Represents the state of a player's board and hand.
 pub struct PlayerState<'ctype> {
     /// The cards in the player's hand, not including Water Silo.
-    pub hand: Cards<'ctype, dyn PersonOrEventType + 'ctype>,
+    pub hand: Cards<PersonOrEventType<'ctype>>,
 
     /// When it is not this player's turn, whether this player has Water Silo
     /// in their hand. (They are assumed to not have it in their hand when it
@@ -438,10 +448,7 @@ pub struct PlayerState<'ctype> {
 impl<'g, 'ctype: 'g> PlayerState<'ctype> {
     /// Creates a new `PlayerState` with the given camps, drawing an initial
     /// hand from the given deck.
-    pub fn new(
-        camps: &[&'ctype CampType],
-        deck: &mut Vec<&'ctype (dyn PersonOrEventType + 'ctype)>,
-    ) -> Self {
+    pub fn new(camps: &[&'ctype CampType], deck: &mut Vec<PersonOrEventType<'ctype>>) -> Self {
         // determine the number of starting cards from the set of camps
         assert_eq!(camps.len(), 3);
         let hand_size: usize = camps.iter().map(|c| c.num_initial_cards as usize).sum();
@@ -617,7 +624,7 @@ pub enum CampStatus {
 
 /// A person played on the board (a punk or face-up person).
 pub enum Person<'ctype> {
-    Punk(&'ctype dyn PersonOrEventType),
+    Punk(PersonOrEventType<'ctype>),
     NonPunk(NonPunk<'ctype>),
 }
 
@@ -676,43 +683,74 @@ pub struct CampType {
     pub num_initial_cards: u32,
 }
 
-/// Supertrait for playable cards (people or events).
-pub trait PersonOrEventType: StyledName {
-    /// Returns the card's name.
-    fn name(&self) -> &'static str;
+/// Enum for playable card types (people or events).
+#[derive(Clone, Copy)]
+pub enum PersonOrEventType<'ctype> {
+    Person(&'ctype PersonType),
+    Event(&'ctype dyn EventType),
+}
 
-    /// Returns how many of this person type are in the deck.
-    fn num_in_deck(&self) -> u32;
+impl PersonOrEventType<'_> {
+    /// Returns the card's name.
+    pub fn name(&self) -> &'static str {
+        match self {
+            PersonOrEventType::Person(person_type) => person_type.name,
+            PersonOrEventType::Event(event_type) => event_type.name(),
+        }
+    }
 
     /// Returns the card's junk effect.
-    fn junk_effect(&self) -> IconEffect;
+    pub fn junk_effect(&self) -> IconEffect {
+        match self {
+            PersonOrEventType::Person(person_type) => person_type.junk_effect,
+            PersonOrEventType::Event(event_type) => event_type.junk_effect(),
+        }
+    }
 
     /// Returns the water cost to play this card.
-    fn cost(&self) -> u32;
-
-    fn as_person(&self) -> Option<&PersonType> {
-        None
-    }
-
-    /// Returns whether this card is a person (not an event).
-    fn is_person(&self) -> bool {
-        self.as_person().is_some()
+    pub fn cost(&self) -> u32 {
+        match self {
+            PersonOrEventType::Person(person_type) => person_type.cost,
+            PersonOrEventType::Event(event_type) => event_type.cost(),
+        }
     }
 }
 
-impl<T: PersonOrEventType> StyledName for T {
+impl StyledName for PersonOrEventType<'_> {
     /// Returns this card's name, styled for display.
     fn styled_name(&self) -> StyledString {
-        StyledString::new(
-            self.name(),
-            if self.is_person() {
-                PERSON_READY
-            } else {
-                EVENT
-            },
-        )
+        match self {
+            PersonOrEventType::Person(person_type) => person_type.styled_name(),
+            PersonOrEventType::Event(event_type) => event_type.styled_name(),
+        }
     }
 }
+
+// hash by address
+impl Hash for PersonOrEventType<'_> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match *self {
+            PersonOrEventType::Person(person_type) => ByAddress(person_type).hash(state),
+            PersonOrEventType::Event(event_type) => ByAddress(event_type).hash(state),
+        }
+    }
+}
+
+// compare by address
+impl PartialEq for PersonOrEventType<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (PersonOrEventType::Person(person), PersonOrEventType::Person(other_person)) => {
+                ByAddress(person) == ByAddress(other_person)
+            }
+            (PersonOrEventType::Event(event), PersonOrEventType::Event(other_event)) => {
+                ByAddress(event) == ByAddress(other_event)
+            }
+            _ => false,
+        }
+    }
+}
+impl Eq for PersonOrEventType<'_> {}
 
 /// A type of person card.
 pub struct PersonType {
@@ -730,30 +768,27 @@ pub struct PersonType {
     // TODO: abilities
 }
 
-impl PersonOrEventType for PersonType {
-    fn name(&self) -> &'static str {
-        self.name
-    }
-
-    fn num_in_deck(&self) -> u32 {
-        self.num_in_deck
-    }
-
-    fn junk_effect(&self) -> IconEffect {
-        self.junk_effect
-    }
-
-    fn cost(&self) -> u32 {
-        self.cost
-    }
-
-    fn as_person(&self) -> Option<&PersonType> {
-        Some(self)
+impl StyledName for PersonType {
+    /// Returns this person's name, styled for display.
+    fn styled_name(&self) -> StyledString {
+        StyledString::new(self.name, PERSON_READY)
     }
 }
 
 /// Trait for a type of event card.
-pub trait EventType: PersonOrEventType {
+pub trait EventType {
+    /// Returns the event's name.
+    fn name(&self) -> &'static str;
+
+    /// Returns how many of this event type are in the deck.
+    fn num_in_deck(&self) -> u32;
+
+    /// Returns the event's junk effect.
+    fn junk_effect(&self) -> IconEffect;
+
+    /// Returns the water cost to play this event.
+    fn cost(&self) -> u32;
+
     /// Returns the number of turns before the event resolves after being played.
     fn resolve_turns(&self) -> u8;
 
@@ -768,9 +803,16 @@ pub trait EventType: PersonOrEventType {
     }
 }
 
+impl<T: EventType + ?Sized> StyledName for T {
+    /// Returns this event's name, styled for display.
+    fn styled_name(&self) -> StyledString {
+        StyledString::new(self.name(), EVENT)
+    }
+}
+
 pub struct RaidersEvent;
 
-impl PersonOrEventType for RaidersEvent {
+impl EventType for RaidersEvent {
     fn name(&self) -> &'static str {
         "Raiders"
     }
@@ -786,9 +828,7 @@ impl PersonOrEventType for RaidersEvent {
     fn cost(&self) -> u32 {
         panic!("Raiders does not have a water cost");
     }
-}
 
-impl EventType for RaidersEvent {
     fn resolve_turns(&self) -> u8 {
         2
     }

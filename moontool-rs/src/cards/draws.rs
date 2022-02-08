@@ -1,4 +1,5 @@
 use std::cmp;
+use std::hash::Hash;
 
 use super::Cards;
 
@@ -7,25 +8,25 @@ use super::Cards;
 /// (Note: There may be room to optimize this.)
 #[derive(Clone)]
 #[must_use = "iterators are lazy and do nothing unless consumed"]
-pub struct Draws<'ctype, CardType: ?Sized> {
+pub struct Draws<CardType> {
     /// The reciprocal of the denominator in the probability calculation.
     prob_denom_recip: f64,
     /// A "stack" of states for each card type.
-    states: Vec<CardTypeState<'ctype, CardType>>,
+    states: Vec<CardTypeState<CardType>>,
     /// The current index into `states`.
     index: isize,
 }
 
 #[derive(Clone)]
-struct CardTypeState<'ctype, CardType: ?Sized> {
-    card_type: &'ctype CardType,
+struct CardTypeState<CardType> {
+    card_type: CardType,
     num_in_deck: usize,
     n_remaining: usize,
     num_drawn: usize,
 }
 
-impl<'ctype, CardType: ?Sized> Draws<'ctype, CardType> {
-    pub(super) fn new(cards: &Cards<'ctype, CardType>, n: usize) -> Self {
+impl<CardType: Hash + Eq + Copy> Draws<CardType> {
+    pub(super) fn new(cards: &Cards<CardType>, n: usize) -> Self {
         if cards.is_empty() {
             return Self {
                 prob_denom_recip: 1.0, // arbitrary; will not be used
@@ -43,9 +44,9 @@ impl<'ctype, CardType: ?Sized> Draws<'ctype, CardType> {
         Self {
             prob_denom_recip: 1.0 / (prob_denom as f64),
             states: cards.cards.iter()
-                .map(|(card_type, &count)| {
+                .map(|(&card_type, &count)| {
                     CardTypeState {
-                        card_type: card_type.0,
+                        card_type,
                         num_in_deck: count,
                         n_remaining: n,
                         num_drawn: 0,
@@ -58,7 +59,7 @@ impl<'ctype, CardType: ?Sized> Draws<'ctype, CardType> {
 
     /// Constructs a result tuple from the current state of the iterator.
     /// Also calls `end_loop()` to prepare for the next iteration.
-    fn make_result(&mut self) -> (Cards<'ctype, CardType>, Cards<'ctype, CardType>, f64) {
+    fn make_result(&mut self) -> (Cards<CardType>, Cards<CardType>, f64) {
         let mut reduced_deck = Cards::new();
         let mut drawn_cards = Cards::new();
         let mut prob_numerator = 1.0;
@@ -95,8 +96,8 @@ impl<'ctype, CardType: ?Sized> Draws<'ctype, CardType> {
     }
 }
 
-impl<'ctype, CardType: ?Sized> Iterator for Draws<'ctype, CardType> {
-    type Item = (Cards<'ctype, CardType>, Cards<'ctype, CardType>, f64);
+impl<CardType: Hash + Eq + Copy> Iterator for Draws<CardType> {
+    type Item = (Cards<CardType>, Cards<CardType>, f64);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.states.is_empty() {
