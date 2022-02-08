@@ -80,7 +80,7 @@ impl PlayerController for HumanController {
         let mut table_columns = table_columns.collect_vec();
 
         for (i, loc) in locations.iter().enumerate() {
-            table_columns[loc.column() as usize][((1 - loc.row()) * 2) as usize] =
+            table_columns[loc.column().as_usize()][(1 - loc.row().as_usize()) * 2] =
                 StyledString::plain(&format!("({}) play here", i + 1));
         }
 

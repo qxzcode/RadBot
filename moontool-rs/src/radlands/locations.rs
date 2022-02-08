@@ -26,6 +26,10 @@ impl CardRowIndex {
         CardRowIndex(0)
     }
 
+    pub fn as_usize(self) -> usize {
+        self.0 as usize
+    }
+
     pub fn to_person_index(self) -> Result<PersonRowIndex, ()> {
         if self.0 != 0 {
             Ok(PersonRowIndex(self.0 - 1))
@@ -74,14 +78,14 @@ impl PlayLocation {
         Self { column, row }
     }
 
-    /// Returns the column (0, 1, or 2).
-    pub fn column(&self) -> u8 {
-        self.column.0
+    /// Returns the column.
+    pub fn column(&self) -> ColumnIndex {
+        self.column
     }
 
-    /// Returns the row (0 or 1).
-    pub fn row(&self) -> u8 {
-        self.row.0
+    /// Returns the row.
+    pub fn row(&self) -> PersonRowIndex {
+        self.row
     }
 }
 

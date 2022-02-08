@@ -154,7 +154,8 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         let target_loc = cur_controller.choose_card_to_damage(self, &target_locs);
 
         // injure the person
-        self.damage_card(target_loc).expect("injure_enemy should not end the game");
+        self.damage_card(target_loc)
+            .expect("injure_enemy should not end the game");
     }
 
     /// Damages the card at the given location.
@@ -323,8 +324,8 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         let play_loc = cur_controller.choose_play_location(self, &person, &play_locs);
 
         // place the card onto the board
-        let col_index = play_loc.column() as usize;
-        let row_index = play_loc.row() as usize;
+        let col_index = play_loc.column().as_usize();
+        let row_index = play_loc.row().as_usize();
         let col = &mut self.cur_player_mut().columns[col_index];
         if let Some(old_person) = col.person_slots[row_index].replace(person) {
             // if there was a person in the slot, move it to the other slot

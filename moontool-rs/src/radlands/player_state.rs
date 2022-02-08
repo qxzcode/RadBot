@@ -253,10 +253,7 @@ impl Camp<'_> {
 
     /// Returns whether the camp is destroyed.
     pub fn is_destroyed(&self) -> bool {
-        match self.status {
-            CampStatus::Destroyed => true,
-            _ => false,
-        }
+        matches!(self.status, CampStatus::Destroyed)
     }
 }
 
