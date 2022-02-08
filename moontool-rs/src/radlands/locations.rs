@@ -99,7 +99,7 @@ pub enum Player {
     Player2,
 }
 
-/// A location of a card (camp or person) on a player's board.
+/// A location of a card (camp or person) on a specified player's board.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CardLocation {
     /// The column of the card (0, 1, or 2).
@@ -135,5 +135,37 @@ impl CardLocation {
     /// Returns the player whose board the card is on.
     pub fn player(&self) -> Player {
         self.player
+    }
+}
+
+/// A location of a card (camp or person) within a player's board.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PlayerCardLocation {
+    /// The column of the card (0, 1, or 2).
+    column: ColumnIndex,
+
+    /// The row of the card (0 (camp), 1, or 2).
+    row: CardRowIndex,
+}
+
+impl PlayerCardLocation {
+    /// Creates a new PlayerCardLocation.
+    pub fn new(column: ColumnIndex, row: CardRowIndex) -> Self {
+        Self { column, row }
+    }
+
+    /// Returns the column.
+    pub fn column(&self) -> ColumnIndex {
+        self.column
+    }
+
+    /// Returns the row.
+    pub fn row(&self) -> CardRowIndex {
+        self.row
+    }
+
+    /// Converts the location to a location on the specified player's board.
+    pub fn for_player(&self, player: Player) -> CardLocation {
+        CardLocation::new(self.column, self.row, player)
     }
 }

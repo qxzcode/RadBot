@@ -65,10 +65,6 @@ impl PlayerController for HumanController {
         person: &Person<'ctype>,
         locations: &[PlayLocation],
     ) -> PlayLocation {
-        let style_person_slot = |slot: &Option<Person>| match slot {
-            Some(person) => person.styled_name(),
-            None => StyledString::empty(),
-        };
         let table_columns = game_state.cur_player().columns.iter().map(|col| {
             vec![
                 style_person_slot(&col.person_slots[1]),
@@ -98,7 +94,39 @@ impl PlayerController for HumanController {
         game_state: &'g GameState<'ctype>,
         target_locs: &[CardLocation],
     ) -> CardLocation {
-        todo!()
+        assert!(!target_locs.is_empty());
+        assert!(
+            target_locs.iter().map(|loc| loc.player()).dedup().count() == 1,
+            "HumanController::choose_card_to_damage() called with cards from multiple players"
+        );
+        let player = target_locs[0].player();
+        let player_state = game_state.player(player);
+
+        let table_columns = player_state.columns.iter().map(|col| {
+            vec![
+                style_person_slot(&col.person_slots[1]),
+                style_person_slot(&col.person_slots[0]),
+                col.camp.styled_name(),
+            ]
+        });
+        let mut table_columns = table_columns.collect_vec();
+
+        for (i, loc) in target_locs.iter().enumerate() {
+            let cell = &mut table_columns[loc.column().as_usize()][2 - loc.row().as_usize()];
+            *cell = &StyledString::plain(&format!("({}) ", i + 1)) + cell;
+        }
+
+        println!();
+        print!("{}", StyledTable::new(table_columns, "").reduce_rows());
+        let loc_number = prompt_for_number("Choose a card to damage: ", 1..=target_locs.len());
+        target_locs[loc_number - 1]
+    }
+}
+
+fn style_person_slot(slot: &Option<Person>) -> StyledString {
+    match slot {
+        Some(person) => person.styled_name(),
+        None => StyledString::empty(),
     }
 }
 

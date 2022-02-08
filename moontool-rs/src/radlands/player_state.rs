@@ -65,21 +65,21 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
     }
 
     /// Returns an iterator over the locations of this player's unprotected cards.
-    pub fn unprotected_cards(&self) -> impl Iterator<Item = CardLocation> + '_ {
+    pub fn unprotected_cards(&self) -> impl Iterator<Item = PlayerCardLocation> + '_ {
         self.columns
             .iter()
             .enumerate()
             .filter_map(|(col_index, col)| {
                 col.frontmost_card_row()
-                    .map(move |row_index| CardLocation::new(col_index.into(), row_index, todo!()))
+                    .map(move |row_index| PlayerCardLocation::new(col_index.into(), row_index))
             })
     }
 
     /// Returns an iterator over the locations of this player's unprotected people.
-    pub fn unprotected_people(&self) -> impl Iterator<Item = CardLocation> + '_ {
+    pub fn unprotected_people(&self) -> impl Iterator<Item = PlayerCardLocation> + '_ {
         self.enumerate_columns().filter_map(|(col_index, col)| {
             col.frontmost_person_row()
-                .map(move |row_index| CardLocation::new(col_index, row_index.into(), todo!()))
+                .map(move |row_index| PlayerCardLocation::new(col_index, row_index.into()))
         })
     }
 

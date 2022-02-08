@@ -1,4 +1,5 @@
 use std::fmt::{self, Display};
+use std::ops::Add;
 
 use itertools::Itertools;
 
@@ -104,6 +105,17 @@ impl StyledString {
 impl fmt::Display for StyledString {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.string)
+    }
+}
+
+impl Add<&StyledString> for &StyledString {
+    type Output = StyledString;
+
+    fn add(self, other: &StyledString) -> StyledString {
+        StyledString {
+            string: format!("{}{}", self.string, other.string),
+            display_length: self.display_length + other.display_length,
+        }
     }
 }
 

@@ -136,7 +136,16 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         cur_controller: &dyn PlayerController,
     ) -> Result<(), GameResult> {
         // get all possible targets
-        let target_locs = self.other_player().unprotected_cards().collect_vec();
+        let target_player = if self.is_player1_turn {
+            Player::Player2
+        } else {
+            Player::Player1
+        };
+        let target_locs = self
+            .other_player()
+            .unprotected_cards()
+            .map(|loc| loc.for_player(target_player))
+            .collect_vec();
 
         // ask the player which one to damage
         let target_loc = cur_controller.choose_card_to_damage(self, &target_locs);
@@ -148,7 +157,16 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
     /// Has the current player injure an unprotected opponent person.
     pub fn injure_enemy(&mut self, cur_controller: &dyn PlayerController) {
         // get all possible targets
-        let target_locs = self.other_player().unprotected_people().collect_vec();
+        let target_player = if self.is_player1_turn {
+            Player::Player2
+        } else {
+            Player::Player1
+        };
+        let target_locs = self
+            .other_player()
+            .unprotected_people()
+            .map(|loc| loc.for_player(target_player))
+            .collect_vec();
 
         // ask the player which one to injure
         let target_loc = cur_controller.choose_card_to_damage(self, &target_locs);
@@ -358,6 +376,13 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
             &self.player2
         } else {
             &self.player1
+        }
+    }
+
+    pub fn player(&'g self, which: Player) -> &'g PlayerState<'ctype> {
+        match which {
+            Player::Player1 => &self.player1,
+            Player::Player2 => &self.player2,
         }
     }
 }
