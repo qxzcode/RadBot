@@ -32,8 +32,8 @@ pub struct GameState<'ctype> {
     deck: Vec<PersonOrEventType<'ctype>>,
     discard: Vec<PersonOrEventType<'ctype>>,
 
-    /// Whether it is currently player 1's turn.
-    is_player1_turn: bool,
+    /// The identity of the player whose turn it currently is.
+    cur_player: Player,
 
     /// The amount of water that the current player has available for use.
     cur_player_water: u32,
@@ -69,7 +69,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
             player2: PlayerState::new(p2_camps, &mut deck),
             deck,
             discard: Vec::new(),
-            is_player1_turn: thread_rng().gen(), // randomly pick which player goes first
+            cur_player: thread_rng().gen(), // randomly pick which player goes first
             cur_player_water: 0,
             has_paid_to_draw: false,
             has_reshuffled_deck: false,
@@ -82,10 +82,9 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         p2_controller: &dyn PlayerController,
         is_first_turn: bool,
     ) -> Result<(), GameResult> {
-        let cur_controller = if self.is_player1_turn {
-            p1_controller
-        } else {
-            p2_controller
+        let cur_controller = match self.cur_player {
+            Player::Player1 => p1_controller,
+            Player::Player2 => p2_controller,
         };
 
         // resolve/advance events
@@ -125,7 +124,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         }
 
         // finally, switch whose turn it is
-        self.is_player1_turn = !self.is_player1_turn;
+        self.cur_player = self.cur_player.other();
 
         Ok(())
     }
@@ -136,11 +135,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         cur_controller: &dyn PlayerController,
     ) -> Result<(), GameResult> {
         // get all possible targets
-        let target_player = if self.is_player1_turn {
-            Player::Player2
-        } else {
-            Player::Player1
-        };
+        let target_player = self.cur_player.other();
         let target_locs = self
             .other_player()
             .unprotected_cards()
@@ -157,11 +152,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
     /// Has the current player injure an unprotected opponent person.
     pub fn injure_enemy(&mut self, cur_controller: &dyn PlayerController) {
         // get all possible targets
-        let target_player = if self.is_player1_turn {
-            Player::Player2
-        } else {
-            Player::Player1
-        };
+        let target_player = self.cur_player.other();
         let target_locs = self
             .other_player()
             .unprotected_people()
@@ -356,27 +347,18 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
     }
 
     pub fn cur_player_mut(&'g mut self) -> &'g mut PlayerState<'ctype> {
-        if self.is_player1_turn {
-            &mut self.player1
-        } else {
-            &mut self.player2
+        match self.cur_player {
+            Player::Player1 => &mut self.player1,
+            Player::Player2 => &mut self.player2,
         }
     }
 
     pub fn cur_player(&'g self) -> &'g PlayerState<'ctype> {
-        if self.is_player1_turn {
-            &self.player1
-        } else {
-            &self.player2
-        }
+        self.player(self.cur_player)
     }
 
     pub fn other_player(&'g self) -> &'g PlayerState<'ctype> {
-        if self.is_player1_turn {
-            &self.player2
-        } else {
-            &self.player1
-        }
+        self.player(self.cur_player.other())
     }
 
     pub fn player(&'g self, which: Player) -> &'g PlayerState<'ctype> {
@@ -389,9 +371,9 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
 impl fmt::Display for GameState<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let write_player_header = |f: &mut fmt::Formatter, is_player_1: bool| {
-            let n = if is_player_1 { 1 } else { 2 };
-            if is_player_1 == self.is_player1_turn {
+        let write_player_header = |f: &mut fmt::Formatter, player: Player| {
+            let n = player.number();
+            if player == self.cur_player {
                 // current player
                 writeln!(
                     f,
@@ -403,11 +385,11 @@ impl fmt::Display for GameState<'_> {
                 writeln!(f, "Player {n}")
             }
         };
-        write_player_header(f, true)?;
-        self.player1.fmt(f, self.is_player1_turn)?;
+        write_player_header(f, Player::Player1)?;
+        self.player1.fmt(f, matches!(self.cur_player, Player::Player1))?;
         writeln!(f)?;
-        write_player_header(f, false)?;
-        self.player2.fmt(f, !self.is_player1_turn)?;
+        write_player_header(f, Player::Player2)?;
+        self.player2.fmt(f, matches!(self.cur_player, Player::Player2))?;
         writeln!(
             f,
             "\n{} cards in deck, {} in discard",

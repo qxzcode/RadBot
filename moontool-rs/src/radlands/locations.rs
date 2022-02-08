@@ -1,5 +1,8 @@
 //! This module contains types representing locations of cards on the board.
 
+use rand::distributions::{Distribution, Standard};
+use rand::Rng;
+
 /// A row index for a person (0 or 1) in a column.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PersonRowIndex(u8);
@@ -97,6 +100,34 @@ pub enum Player {
 
     /// Player 2.
     Player2,
+}
+
+impl Player {
+    /// Returns the other player.
+    pub fn other(self) -> Self {
+        match self {
+            Self::Player1 => Self::Player2,
+            Self::Player2 => Self::Player1,
+        }
+    }
+
+    /// Returns the player's number.
+    pub fn number(self) -> u8 {
+        match self {
+            Self::Player1 => 1,
+            Self::Player2 => 2,
+        }
+    }
+}
+
+// allow random generation of Player
+impl Distribution<Player> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Player {
+        match rng.gen::<bool>() {
+            true => Player::Player1,
+            false => Player::Player2,
+        }
+    }
 }
 
 /// A location of a card (camp or person) on a specified player's board.
