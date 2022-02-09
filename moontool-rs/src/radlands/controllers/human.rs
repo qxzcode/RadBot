@@ -42,9 +42,8 @@ impl PlayerController for HumanController {
         game_state: &'g GameState<'ctype>,
         actions: &'a [Action<'ctype>],
     ) -> &'a Action<'ctype> {
-        // clear the screen and print the game state
-        print!("\x1b[2J\x1b[H");
-        println!("{}\n", game_state);
+        // print the game state
+        println!("\n{}\n", game_state);
 
         // print the available actions
         println!("Available actions:");
