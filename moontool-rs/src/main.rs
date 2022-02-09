@@ -1,6 +1,8 @@
 mod cards;
 mod radlands;
 
+use radlands::camps::CampType;
+use radlands::people::PersonType;
 use radlands::*;
 
 use crate::radlands::controllers::{human::HumanController, random::RandomController};
@@ -11,11 +13,17 @@ fn main() {
     let camp_types = camps::get_camp_types();
     let person_types = people::get_person_types();
 
+    for _ in 0..1 {
+        do_game(&camp_types, &person_types);
+    }
+}
+
+fn do_game(camp_types: &[CampType], person_types: &[PersonType]) {
     let hc1 = HumanController { label: "Human 1" };
     let hc2 = HumanController { label: "Human 2" };
-    // let hc1 = RandomController;
-    // let hc2 = RandomController;
-    let mut game_state = GameState::new(&camp_types, &person_types);
+    let hc1 = RandomController;
+    let hc2 = RandomController;
+    let mut game_state = GameState::new(camp_types, person_types);
 
     for turn_num in 1.. {
         println!("\nTurn {}\n", turn_num);
