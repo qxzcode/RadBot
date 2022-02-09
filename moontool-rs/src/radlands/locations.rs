@@ -167,6 +167,11 @@ impl CardLocation {
     pub fn player(&self) -> Player {
         self.player
     }
+
+    /// Converts the location to a PlayerCardLocation by removing the player field.
+    pub fn player_loc(self) -> PlayerCardLocation {
+        PlayerCardLocation::new(self.column, self.row)
+    }
 }
 
 /// A location of a card (camp or person) within a player's board.

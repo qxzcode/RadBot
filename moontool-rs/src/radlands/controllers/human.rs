@@ -86,30 +86,7 @@ impl PlayerController for HumanController {
         game_state: &'g GameState<'ctype>,
         target_locs: &[CardLocation],
     ) -> CardLocation {
-        assert!(!target_locs.is_empty());
-        assert!(
-            target_locs.iter().map(|loc| loc.player()).dedup().count() == 1,
-            "HumanController::choose_card_to_damage() called with cards from multiple players"
-        );
-        let player = target_locs[0].player();
-        let player_state = game_state.player(player);
-
-        let table_columns = player_state.columns.iter().map(|col| {
-            vec![
-                style_person_slot(&col.person_slots[1]),
-                style_person_slot(&col.person_slots[0]),
-                col.camp.styled_name(),
-            ]
-        });
-        let mut table_columns = table_columns.collect_vec();
-
-        for (i, loc) in target_locs.iter().enumerate() {
-            let cell = &mut table_columns[loc.column().as_usize()][2 - loc.row().as_usize()];
-            *cell = &StyledString::plain(&format!("({}) ", i + 1)) + cell;
-        }
-
-        println!();
-        print!("{}", StyledTable::new(table_columns, "").reduce_rows());
+        print_card_selection(game_state, target_locs);
         let loc_number = prompt_for_number("Choose a card to damage: ", 1..=target_locs.len());
         target_locs[loc_number - 1]
     }
@@ -119,7 +96,9 @@ impl PlayerController for HumanController {
         game_state: &'g GameState<'ctype>,
         target_locs: &[PlayerCardLocation],
     ) -> PlayerCardLocation {
-        todo!()
+        print_player_card_selection(game_state, game_state.cur_player, target_locs);
+        let loc_number = prompt_for_number("Choose a card to restore: ", 1..=target_locs.len());
+        target_locs[loc_number - 1]
     }
 }
 
@@ -128,4 +107,48 @@ fn style_person_slot(slot: &Option<Person>) -> StyledString {
         Some(person) => person.styled_name(),
         None => StyledString::empty(),
     }
+}
+
+/// Prints the board with the target cards numbered for the user to choose.
+fn print_card_selection(game_state: &GameState, target_locs: &[CardLocation]) {
+    assert!(!target_locs.is_empty());
+    // TODO: allow mixing locations for different players
+    // (some cards can target cards belonging to either player)
+    assert!(
+        target_locs.iter().map(|loc| loc.player()).dedup().count() == 1,
+        "print_card_selection() called with cards from multiple players"
+    );
+    print_player_card_selection(
+        game_state,
+        target_locs[0].player(),
+        &target_locs.iter().map(|loc| loc.player_loc()).collect_vec(),
+    );
+}
+
+/// Prints the board with the target cards numbered for the user to choose.
+fn print_player_card_selection(
+    game_state: &GameState,
+    player: Player,
+    target_locs: &[PlayerCardLocation],
+) {
+    assert!(!target_locs.is_empty());
+
+    let player_state = game_state.player(player);
+
+    let table_columns = player_state.columns.iter().map(|col| {
+        vec![
+            style_person_slot(&col.person_slots[1]),
+            style_person_slot(&col.person_slots[0]),
+            col.camp.styled_name(),
+        ]
+    });
+    let mut table_columns = table_columns.collect_vec();
+
+    for (i, loc) in target_locs.iter().enumerate() {
+        let cell = &mut table_columns[loc.column().as_usize()][2 - loc.row().as_usize()];
+        *cell = &StyledString::plain(&format!("({}) ", i + 1)) + cell;
+    }
+
+    println!();
+    print!("{}", StyledTable::new(table_columns, "").reduce_rows());
 }
