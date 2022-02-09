@@ -1,4 +1,5 @@
 pub mod camps;
+pub mod controllers;
 pub mod locations;
 pub mod people;
 pub mod player_state;
