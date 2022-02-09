@@ -137,8 +137,8 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         // get all possible targets
         let target_player = self.cur_player.other();
         let target_locs = self
-            .other_player()
-            .unprotected_cards()
+            .player(target_player)
+            .unprotected_card_locs()
             .map(|loc| loc.for_player(target_player))
             .collect_vec();
 
@@ -146,16 +146,17 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         let target_loc = cur_controller.choose_card_to_damage(self, &target_locs);
 
         // damage the card
-        self.damage_card(target_loc)
+        self.damage_card_at(target_loc)
     }
 
     /// Has the current player injure an unprotected opponent person.
+    /// Assumes that the opponent has at least one person.
     pub fn injure_enemy(&mut self, cur_controller: &dyn PlayerController) {
         // get all possible targets
         let target_player = self.cur_player.other();
         let target_locs = self
-            .other_player()
-            .unprotected_people()
+            .player(target_player)
+            .unprotected_person_locs()
             .map(|loc| loc.for_player(target_player))
             .collect_vec();
 
@@ -163,13 +164,13 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         let target_loc = cur_controller.choose_card_to_damage(self, &target_locs);
 
         // injure the person
-        self.damage_card(target_loc)
+        self.damage_card_at(target_loc)
             .expect("injure_enemy should not end the game");
     }
 
     /// Damages the card at the given location.
     /// Panics if there is no card there.
-    pub fn damage_card(&mut self, loc: CardLocation) -> Result<(), GameResult> {
+    pub fn damage_card_at(&mut self, loc: CardLocation) -> Result<(), GameResult> {
         let player_state = match loc.player() {
             Player::Player1 => &mut self.player1,
             Player::Player2 => &mut self.player2,
@@ -205,9 +206,9 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                     }
                 }
             }
-            Err(_) => {
+            Err(()) => {
                 // damage the camp in the given column and check for win condition
-                let no_camps_left = player_state.damage_camp(loc.column());
+                let no_camps_left = player_state.damage_camp_at(loc.column());
                 if no_camps_left {
                     return Err(match loc.player() {
                         Player::Player1 => GameResult::P2Wins,
@@ -218,6 +219,19 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         }
 
         Ok(())
+    }
+
+    /// Has the current player restore one of their own damaged cards.
+    /// Assumes that the player has at least one restorable card.
+    pub fn restore_card(&mut self, cur_controller: &dyn PlayerController) {
+        // get all possible targets
+        let target_locs = self.cur_player().restorable_card_locs().collect_vec();
+
+        // ask the player which one to restore
+        let target_loc = cur_controller.choose_card_to_restore(self, &target_locs);
+
+        // restore the card
+        self.cur_player_mut().restore_card_at(target_loc);
     }
 
     /// Draws a card from the deck.
@@ -504,6 +518,12 @@ pub trait PlayerController {
         game_state: &'g GameState<'ctype>,
         target_locs: &[CardLocation],
     ) -> CardLocation;
+
+    fn choose_card_to_restore<'g, 'ctype: 'g>(
+        &self,
+        game_state: &'g GameState<'ctype>,
+        target_locs: &[PlayerCardLocation],
+    ) -> PlayerCardLocation;
 }
 
 /// Enum for playable card types (people or events).
@@ -682,7 +702,7 @@ impl IconEffect {
                 game_state.injure_enemy(cur_controller);
             }
             IconEffect::Restore => {
-                todo!("perform IconEffect::Restore");
+                game_state.restore_card(cur_controller);
             }
             IconEffect::Draw => {
                 game_state.draw_card_into_hand()?;

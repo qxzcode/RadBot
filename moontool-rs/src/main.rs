@@ -121,6 +121,14 @@ impl PlayerController for HumanController {
         let loc_number = prompt_for_number("Choose a card to damage: ", 1..=target_locs.len());
         target_locs[loc_number - 1]
     }
+
+    fn choose_card_to_restore<'g, 'ctype: 'g>(
+        &self,
+        game_state: &'g GameState<'ctype>,
+        target_locs: &[PlayerCardLocation],
+    ) -> PlayerCardLocation {
+        todo!()
+    }
 }
 
 fn style_person_slot(slot: &Option<Person>) -> StyledString {
@@ -169,7 +177,20 @@ impl PlayerController for RandomController {
         let chosen_target = target_locs
             .choose(&mut rng)
             .expect("choose_card_to_damage called with empty target_locs list");
-        println!("{BOLD}RandomController chose target:{RESET} {chosen_target:?}");
+        println!("{BOLD}RandomController chose damage target:{RESET} {chosen_target:?}");
+        *chosen_target
+    }
+
+    fn choose_card_to_restore<'g, 'ctype: 'g>(
+        &self,
+        _game_state: &'g GameState<'ctype>,
+        target_locs: &[PlayerCardLocation],
+    ) -> PlayerCardLocation {
+        let mut rng = thread_rng();
+        let chosen_target = target_locs
+            .choose(&mut rng)
+            .expect("choose_card_to_restore called with empty target_locs list");
+        println!("{BOLD}RandomController chose restore target:{RESET} {chosen_target:?}");
         *chosen_target
     }
 }

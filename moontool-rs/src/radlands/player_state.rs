@@ -46,9 +46,22 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
     /// Damages the camp in the given column.
     /// Returns true if this player has no camps remaining.
     #[must_use = "if this returns true, the game must immediately end with this player losing"]
-    pub fn damage_camp(&mut self, column_index: ColumnIndex) -> bool {
+    pub fn damage_camp_at(&mut self, column_index: ColumnIndex) -> bool {
         self.columns[column_index.as_usize()].camp.damage();
         self.columns.iter().all(|c| c.camp.is_destroyed())
+    }
+
+    /// Restores the card at the given location.
+    /// Panics if there is no card there.
+    pub fn restore_card_at(&mut self, loc: PlayerCardLocation) {
+        let column = &mut self.columns[loc.column().as_usize()];
+        match loc.row().to_person_index() {
+            Ok(person_row_index) => column.person_slots[person_row_index.as_usize()]
+                .as_mut()
+                .expect("Tried to restore a location that does not contain a card")
+                .restore(),
+            Err(()) => column.camp.restore(),
+        }
     }
 
     /// Returns whether this player has an empty person slot.
@@ -64,13 +77,21 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
         self.columns.iter().any(|col| col.has_restorable_card())
     }
 
+    /// Returns an iterator over the locations of any damaged cards that this player can restore.
+    pub fn restorable_card_locs(&self) -> impl Iterator<Item = PlayerCardLocation> + '_ {
+        self.enumerate_columns().flat_map(|(col_index, col)| {
+            col.restorable_card_rows()
+                .map(move |row_index| PlayerCardLocation::new(col_index, row_index))
+        })
+    }
+
     /// Returns an iterator over the people on this player's board.
     pub fn people(&self) -> impl Iterator<Item = &Person<'ctype>> {
         self.columns.iter().flat_map(|col| col.people())
     }
 
     /// Returns an iterator over the locations of this player's unprotected cards.
-    pub fn unprotected_cards(&self) -> impl Iterator<Item = PlayerCardLocation> + '_ {
+    pub fn unprotected_card_locs(&self) -> impl Iterator<Item = PlayerCardLocation> + '_ {
         self.enumerate_columns().filter_map(|(col_index, col)| {
             col.frontmost_card_row()
                 .map(move |row_index| PlayerCardLocation::new(col_index, row_index))
@@ -78,7 +99,7 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
     }
 
     /// Returns an iterator over the locations of this player's unprotected people.
-    pub fn unprotected_people(&self) -> impl Iterator<Item = PlayerCardLocation> + '_ {
+    pub fn unprotected_person_locs(&self) -> impl Iterator<Item = PlayerCardLocation> + '_ {
         self.enumerate_columns().filter_map(|(col_index, col)| {
             col.frontmost_person_row()
                 .map(move |row_index| PlayerCardLocation::new(col_index, row_index.into()))
@@ -212,6 +233,30 @@ impl<'ctype> CardColumn<'ctype> {
         self.camp.is_restorable() || self.people().any(|person| person.is_restorable())
     }
 
+    /// Returns an iterator over the locations of any damaged and restorable cards in this column.
+    pub fn restorable_card_rows(&self) -> impl Iterator<Item = CardRowIndex> + '_ {
+        let restorable_camp_row = if self.camp.is_restorable() {
+            Some(CardRowIndex::camp())
+        } else {
+            None
+        };
+        let restorable_person_rows =
+            self.person_slots
+                .iter()
+                .enumerate()
+                .filter_map(|(row, slot)| {
+                    if matches!(slot, Some(person) if person.is_restorable()) {
+                        let row: PersonRowIndex = row.into();
+                        Some(row.into())
+                    } else {
+                        None
+                    }
+                });
+        restorable_camp_row
+            .into_iter()
+            .chain(restorable_person_rows)
+    }
+
     /// Returns the row index (0 or 1) of the frontmost person in the column, or None if there are
     /// no people in the column.
     pub fn frontmost_person_row(&self) -> Option<PersonRowIndex> {
@@ -256,6 +301,16 @@ impl Camp<'_> {
             CampStatus::Damaged => self.status = CampStatus::Destroyed,
             CampStatus::Destroyed => panic!("Tried to damage a destroyed camp"),
         }
+    }
+
+    /// Restores the camp.
+    /// Panics if the camp is destroyed or undamaged.
+    pub fn restore(&mut self) {
+        assert!(
+            self.status == CampStatus::Damaged,
+            "Tried to restore a destroyed or undamaged camp"
+        );
+        self.status = CampStatus::Undamaged;
     }
 
     /// Returns whether the camp is destroyed.
@@ -313,6 +368,18 @@ impl<'ctype> Person<'ctype> {
     /// Returns whether this person is damaged and can be restored.
     pub fn is_restorable(&self) -> bool {
         matches!(self, Person::NonPunk(NonPunk { is_injured, .. }) if *is_injured)
+    }
+
+    /// Restores this person.
+    /// Panics if the person is not damaged.
+    pub fn restore(&mut self) {
+        match self {
+            Person::Punk(_) => panic!("Tried to restore a punk"),
+            Person::NonPunk(non_punk) => {
+                assert!(non_punk.is_injured, "Tried to restore an undamaged person");
+                non_punk.is_injured = false;
+            }
+        }
     }
 }
 
