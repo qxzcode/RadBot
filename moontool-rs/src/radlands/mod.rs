@@ -171,7 +171,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
     /// Damages the card at the given location.
     /// Panics if there is no card there.
-    pub fn damage_card_at(&mut self, loc: CardLocation) -> Result<(), GameResult> {
+    fn damage_card_at(&mut self, loc: CardLocation) -> Result<(), GameResult> {
         let player_state = match loc.player() {
             Player::Player1 => &mut self.player1,
             Player::Player2 => &mut self.player2,
@@ -285,16 +285,6 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         self.cur_player_water += 1;
     }
 
-    /// Has the current player add a punk to their board.
-    /// Does nothing if the player's board is full.
-    pub fn gain_punk(&mut self, cur_controller: &dyn PlayerController) -> Result<(), GameResult> {
-        if self.cur_player().has_empty_person_slot() {
-            let punk = Person::Punk(self.draw_card()?);
-            self.play_person(cur_controller, punk);
-        }
-        Ok(())
-    }
-
     /// Plays or advances the current player's Raiders event.
     pub fn raid(&'g mut self) {
         // search for the Raiders event in the event queue
@@ -319,7 +309,28 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
         // if we get here, the raiders event was not found in the event queue;
         // add it to the queue
-        todo!("add Raiders event to event queue");
+        self.play_event(&RaidersEvent);
+    }
+
+    /// Plays an event into the current player's event queue.
+    /// Panics if there is not a free slot for the event.
+    fn play_event(&'g mut self, event: &'ctype dyn EventType) {
+        let slot_index = (event.resolve_turns() - 1) as usize;
+        let free_slot = self.cur_player_mut().events[slot_index..]
+            .iter_mut()
+            .find(|slot| slot.is_none())
+            .expect("Tried to play an event, but there was no free slot");
+        *free_slot = Some(event);
+    }
+
+    /// Has the current player add a punk to their board.
+    /// Does nothing if the player's board is full.
+    pub fn gain_punk(&mut self, cur_controller: &dyn PlayerController) -> Result<(), GameResult> {
+        if self.cur_player().has_empty_person_slot() {
+            let punk = Person::Punk(self.draw_card()?);
+            self.play_person(cur_controller, punk);
+        }
+        Ok(())
     }
 
     /// Asks the current player's controller to choose a location, then plays the given person
@@ -685,7 +696,7 @@ impl IconEffect {
             IconEffect::Draw => true, // it's always possible to draw a card
             IconEffect::Water => true, // it's always possible to gain water
             IconEffect::GainPunk => game_state.cur_player().has_empty_person_slot(),
-            IconEffect::Raid => todo!("check if Raid effect can be performed"),
+            IconEffect::Raid => game_state.cur_player().can_raid(),
         }
     }
 
