@@ -6,28 +6,34 @@ use std::str::FromStr;
 
 use crate::radlands::*;
 
-/// Prompts the user for a valid number within some range and returns it.
-fn prompt_for_number<T: FromStr + PartialOrd>(prompt: &str, range: impl RangeBounds<T>) -> T {
-    loop {
-        print!("{prompt}");
-        io::stdout().flush().expect("Failed to flush stdout");
-
-        let mut input_line = String::new();
-        io::stdin()
-            .read_line(&mut input_line)
-            .expect("Failed to read input");
-
-        if let Ok(number) = input_line.trim().parse::<T>() {
-            if range.contains(&number) {
-                return number;
-            }
-        }
-    }
-}
-
 /// A `PlayerController` that allows manual, human input.
 pub struct HumanController {
     pub label: &'static str,
+}
+
+impl HumanController {
+    /// Prompts the user for a valid number within some range and returns it.
+    fn prompt_for_number<T: FromStr + PartialOrd>(
+        &self,
+        prompt: &str,
+        range: impl RangeBounds<T>,
+    ) -> T {
+        loop {
+            print!("[{}] {prompt}", self.label);
+            io::stdout().flush().expect("Failed to flush stdout");
+
+            let mut input_line = String::new();
+            io::stdin()
+                .read_line(&mut input_line)
+                .expect("Failed to read input");
+
+            if let Ok(number) = input_line.trim().parse::<T>() {
+                if range.contains(&number) {
+                    return number;
+                }
+            }
+        }
+    }
 }
 
 impl PlayerController for HumanController {
@@ -41,13 +47,13 @@ impl PlayerController for HumanController {
         println!("{}\n", game_state);
 
         // print the available actions
-        println!("{} - choose an action:", self.label);
+        println!("Available actions:");
         for (i, action) in actions.iter().enumerate() {
             println!("  ({})  {action}", i + 1);
         }
 
         // prompt the user for an action
-        let action_number = prompt_for_number("Choose an action: ", 1..=actions.len());
+        let action_number = self.prompt_for_number("Choose an action: ", 1..=actions.len());
         &actions[action_number - 1]
     }
 
@@ -74,7 +80,7 @@ impl PlayerController for HumanController {
 
         println!();
         print!("{}", StyledTable::new(table_columns, "").reduce_rows());
-        let loc_number = prompt_for_number(
+        let loc_number = self.prompt_for_number(
             &format!("Choose a location to play {}: ", person.styled_name()),
             1..=locations.len(),
         );
@@ -87,7 +93,7 @@ impl PlayerController for HumanController {
         target_locs: &[CardLocation],
     ) -> CardLocation {
         print_card_selection(game_state, target_locs);
-        let loc_number = prompt_for_number("Choose a card to damage: ", 1..=target_locs.len());
+        let loc_number = self.prompt_for_number("Choose a card to damage: ", 1..=target_locs.len());
         target_locs[loc_number - 1]
     }
 
@@ -97,7 +103,8 @@ impl PlayerController for HumanController {
         target_locs: &[PlayerCardLocation],
     ) -> PlayerCardLocation {
         print_player_card_selection(game_state, game_state.cur_player, target_locs);
-        let loc_number = prompt_for_number("Choose a card to restore: ", 1..=target_locs.len());
+        let loc_number =
+            self.prompt_for_number("Choose a card to restore: ", 1..=target_locs.len());
         target_locs[loc_number - 1]
     }
 }
