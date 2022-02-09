@@ -386,10 +386,10 @@ impl fmt::Display for GameState<'_> {
             }
         };
         write_player_header(f, Player::Player1)?;
-        self.player1.fmt(f, matches!(self.cur_player, Player::Player1))?;
+        self.player1.fmt(f, self.cur_player == Player::Player1)?;
         writeln!(f)?;
         write_player_header(f, Player::Player2)?;
-        self.player2.fmt(f, matches!(self.cur_player, Player::Player2))?;
+        self.player2.fmt(f, self.cur_player == Player::Player2)?;
         writeln!(
             f,
             "\n{} cards in deck, {} in discard",
@@ -660,7 +660,7 @@ impl IconEffect {
         match self {
             IconEffect::Damage => true, // if there's nothing to damage, the game is over!
             IconEffect::Injure => game_state.other_player().people().next().is_some(),
-            IconEffect::Restore => todo!("check if Restore effect can be performed"),
+            IconEffect::Restore => game_state.cur_player().has_restorable_card(),
             IconEffect::Draw => true, // it's always possible to draw a card
             IconEffect::Water => true, // it's always possible to gain water
             IconEffect::GainPunk => game_state.cur_player().has_empty_person_slot(),

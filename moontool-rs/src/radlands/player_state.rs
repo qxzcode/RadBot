@@ -59,6 +59,11 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
             .any(|slot| slot.is_none())
     }
 
+    /// Returns whether this player has any damaged cards that they can restore.
+    pub fn has_restorable_card(&self) -> bool {
+        self.columns.iter().any(|col| col.has_restorable_card())
+    }
+
     /// Returns an iterator over the people on this player's board.
     pub fn people(&self) -> impl Iterator<Item = &Person<'ctype>> {
         self.columns.iter().flat_map(|col| col.people())
@@ -66,13 +71,10 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
 
     /// Returns an iterator over the locations of this player's unprotected cards.
     pub fn unprotected_cards(&self) -> impl Iterator<Item = PlayerCardLocation> + '_ {
-        self.columns
-            .iter()
-            .enumerate()
-            .filter_map(|(col_index, col)| {
-                col.frontmost_card_row()
-                    .map(move |row_index| PlayerCardLocation::new(col_index.into(), row_index))
-            })
+        self.enumerate_columns().filter_map(|(col_index, col)| {
+            col.frontmost_card_row()
+                .map(move |row_index| PlayerCardLocation::new(col_index, row_index))
+        })
     }
 
     /// Returns an iterator over the locations of this player's unprotected people.
@@ -205,6 +207,11 @@ impl<'ctype> CardColumn<'ctype> {
             .filter_map(|person| person.as_ref())
     }
 
+    /// Returns whether this column has any damaged cards that can be restored.
+    pub fn has_restorable_card(&self) -> bool {
+        self.camp.is_restorable() || self.people().any(|person| person.is_restorable())
+    }
+
     /// Returns the row index (0 or 1) of the frontmost person in the column, or None if there are
     /// no people in the column.
     pub fn frontmost_person_row(&self) -> Option<PersonRowIndex> {
@@ -253,7 +260,12 @@ impl Camp<'_> {
 
     /// Returns whether the camp is destroyed.
     pub fn is_destroyed(&self) -> bool {
-        matches!(self.status, CampStatus::Destroyed)
+        self.status == CampStatus::Destroyed
+    }
+
+    /// Returns whether the camp is damaged and can be restored.
+    pub fn is_restorable(&self) -> bool {
+        self.status == CampStatus::Damaged
     }
 }
 
@@ -276,6 +288,7 @@ impl StyledName for Camp<'_> {
 }
 
 /// Enum representing the damage status of a camp.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum CampStatus {
     Undamaged,
     Damaged,
@@ -295,6 +308,11 @@ impl<'ctype> Person<'ctype> {
             person_type,
             is_injured: false,
         })
+    }
+
+    /// Returns whether this person is damaged and can be restored.
+    pub fn is_restorable(&self) -> bool {
+        matches!(self, Person::NonPunk(NonPunk { is_injured, .. }) if *is_injured)
     }
 }
 
