@@ -153,23 +153,34 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
             .map(|(col_index, col)| (col_index.into(), col))
     }
 
-    pub fn actions(&self, game: &'g GameState<'ctype>) -> Vec<Action<'ctype>> {
+    pub fn actions(&self, game_state: &'g GameState<'ctype>) -> Vec<Action<'ctype>> {
         let mut actions = Vec::new();
 
         // actions to play or junk a card
-        let can_play_card = self.has_empty_person_slot();
+        let can_play_person = self.has_empty_person_slot();
         for card_type in self.hand.iter_unique() {
-            if can_play_card && game.cur_player_water >= card_type.cost() {
-                actions.push(Action::PlayCard(card_type));
+            if game_state.cur_player_water >= card_type.cost() {
+                match card_type {
+                    PersonOrEventType::Person(person_type) => {
+                        if can_play_person {
+                            actions.push(Action::PlayPerson(person_type));
+                        }
+                    }
+                    PersonOrEventType::Event(event_type) => {
+                        if self.can_play_event(event_type.resolve_turns()) {
+                            actions.push(Action::PlayEvent(event_type));
+                        }
+                    }
+                }
             }
-            if card_type.junk_effect().can_perform(game) {
+            if card_type.junk_effect().can_perform(game_state) {
                 actions.push(Action::JunkCard(card_type));
             }
         }
 
         // action to pay 2 water to draw a card
         // (limited to 1 use per turn)
-        if game.cur_player_water >= 2 && !game.has_paid_to_draw {
+        if game_state.cur_player_water >= 2 && !game_state.has_paid_to_draw {
             actions.push(Action::DrawCard);
         }
 

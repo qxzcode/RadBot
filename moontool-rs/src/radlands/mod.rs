@@ -427,8 +427,11 @@ impl fmt::Display for GameState<'_> {
 
 /// An action that can be performed by a player during their turn.
 pub enum Action<'ctype> {
-    /// Play a person or event card from the hand onto the board.
-    PlayCard(PersonOrEventType<'ctype>),
+    /// Play a person card from the hand onto the board.
+    PlayPerson(&'ctype PersonType),
+
+    /// Play an event card from the hand onto the event queue.
+    PlayEvent(&'ctype dyn EventType),
 
     /// Draw a card (costs 2 water).
     DrawCard,
@@ -452,24 +455,26 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
         cur_controller: &dyn PlayerController,
     ) -> Result<bool, GameResult> {
         match *self {
-            Action::PlayCard(card) => {
-                // pay the card's cost and remove it from the player's hand
-                game_state.spend_water(card.cost());
-                game_state.cur_player_mut().hand.remove_one(card);
+            Action::PlayPerson(person_type) => {
+                // pay the person's cost and remove it from the player's hand
+                game_state.spend_water(person_type.cost);
+                game_state.cur_player_mut().hand.remove_one(PersonOrEventType::Person(person_type));
 
-                match card {
-                    PersonOrEventType::Person(person_type) => {
-                        // play the person onto the board
-                        game_state.play_person(cur_controller, Person::new_non_punk(person_type));
-                    }
-                    PersonOrEventType::Event(event_type) => {
-                        // add the event to the event queue
-                        todo!("add event to event queue");
-                    }
-                }
+                // play the person onto the board
+                game_state.play_person(cur_controller, Person::new_non_punk(person_type));
 
                 Ok(false)
-            },
+            }
+            Action::PlayEvent(event_type) => {
+                // pay the event's cost and remove it from the player's hand
+                game_state.spend_water(event_type.cost());
+                game_state.cur_player_mut().hand.remove_one(PersonOrEventType::Event(event_type));
+
+                // add the event to the event queue
+                game_state.play_event(event_type);
+
+                Ok(false)
+            }
             Action::DrawCard => {
                 game_state.spend_water(2);
                 game_state.draw_card_into_hand()?;
@@ -502,7 +507,8 @@ impl<'g, 'ctype: 'g> Action<'ctype> {
 impl fmt::Display for Action<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Action::PlayCard(card) => write!(f, "Play {} (costs {WATER}{} water{RESET})", card.styled_name(), card.cost()),
+            Action::PlayPerson(card) => write!(f, "Play {} (costs {WATER}{} water{RESET})", card.styled_name(), card.cost),
+            Action::PlayEvent(card) => write!(f, "Play {} (costs {WATER}{} water{RESET})", card.styled_name(), card.cost()),
             Action::DrawCard => write!(f, "Draw a card (costs {WATER}2 water{RESET})"),
             Action::JunkCard(card) => write!(f, "Junk {} (effect: {:?})", card.styled_name(), card.junk_effect()),
             Action::UseAbility(/*TODO*/) => write!(f, "Use ability: [TODO]"),
