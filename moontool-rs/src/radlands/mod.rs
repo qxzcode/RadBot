@@ -90,7 +90,13 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
         // resolve/advance events
         if let Some(event) = self.cur_player_mut().events[0].take() {
+            // resolve the first event
             event.resolve(self);
+
+            // discard it if it's not Raiders
+            if event.as_raiders().is_none() {
+                self.discard.push(PersonOrEventType::Event(event));
+            }
         }
         self.cur_player_mut().events.rotate_left(1);
 
@@ -293,8 +299,9 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                 if let Some(raiders) = event.as_raiders() {
                     // found the raiders event
                     if i == 0 {
-                        // it's the first event, so resolve it
+                        // it's the first event, so resolve and remove it
                         raiders.resolve(self);
+                        self.cur_player_mut().events[0] = None;
                     } else {
                         // it's not the first event, so advance it if possible
                         let events = &mut self.cur_player_mut().events;
