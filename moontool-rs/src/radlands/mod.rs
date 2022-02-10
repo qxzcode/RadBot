@@ -704,19 +704,15 @@ impl EventType for RaidersEvent {
         &self,
         game_view: &'v mut GameView<'g, 'ctype>,
     ) -> Result<(), GameResult> {
-        // have the other player choose one of their camps to damage
+        // have the other player choose one of their (non-destroyed) camps to damage
         let target_locs = game_view
             .other_state()
-            .enumerate_columns()
-            .filter_map(|(col_index, col)| {
-                if col.camp.is_destroyed() {
+            .enumerate_camps()
+            .filter_map(|(location, camp)| {
+                if camp.is_destroyed() {
                     None
                 } else {
-                    Some(CardLocation::new(
-                        col_index,
-                        CardRowIndex::camp(),
-                        game_view.player.other(),
-                    ))
+                    Some(location.for_player(game_view.player.other()))
                 }
             })
             .collect_vec();

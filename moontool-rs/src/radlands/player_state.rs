@@ -153,6 +153,17 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
             .map(|(col_index, col)| (col_index.into(), col))
     }
 
+    /// Returns an iterator that enumerates the camps of this player's board with strongly-typed
+    /// locations.
+    pub fn enumerate_camps(&self) -> impl Iterator<Item = (PlayerCardLocation, &Camp)> + '_ {
+        self.enumerate_columns().map(|(col_index, col)| {
+            (
+                PlayerCardLocation::new(col_index, CardRowIndex::camp()),
+                &col.camp,
+            )
+        })
+    }
+
     /// Returns the actions that this player can take given a view for them.
     pub fn actions(&self, game_view: &'v GameView<'g, 'ctype>) -> Vec<Action<'ctype>> {
         let mut actions = Vec::new();
