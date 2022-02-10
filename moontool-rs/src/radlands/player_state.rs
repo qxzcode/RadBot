@@ -19,7 +19,7 @@ pub struct PlayerState<'ctype> {
     pub events: [Option<&'ctype (dyn EventType + 'ctype)>; 3],
 }
 
-impl<'g, 'ctype: 'g> PlayerState<'ctype> {
+impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
     /// Creates a new `PlayerState` with the given camps, drawing an initial
     /// hand from the given deck.
     pub fn new(camps: &[&'ctype CampType], deck: &mut Vec<PersonOrEventType<'ctype>>) -> Self {
@@ -153,13 +153,14 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
             .map(|(col_index, col)| (col_index.into(), col))
     }
 
-    pub fn actions(&self, game_state: &'g GameState<'ctype>) -> Vec<Action<'ctype>> {
+    /// Returns the actions that this player can take given a view for them.
+    pub fn actions(&self, game_view: &'v GameView<'g, 'ctype>) -> Vec<Action<'ctype>> {
         let mut actions = Vec::new();
 
         // actions to play or junk a card
         let can_play_person = self.has_empty_person_slot();
         for card_type in self.hand.iter_unique() {
-            if game_state.cur_player_water >= card_type.cost() {
+            if game_view.game_state.cur_player_water >= card_type.cost() {
                 match card_type {
                     PersonOrEventType::Person(person_type) => {
                         if can_play_person {
@@ -173,14 +174,14 @@ impl<'g, 'ctype: 'g> PlayerState<'ctype> {
                     }
                 }
             }
-            if card_type.junk_effect().can_perform(game_state) {
+            if card_type.junk_effect().can_perform(game_view) {
                 actions.push(Action::JunkCard(card_type));
             }
         }
 
         // action to pay 2 water to draw a card
         // (limited to 1 use per turn)
-        if game_state.cur_player_water >= 2 && !game_state.has_paid_to_draw {
+        if game_view.game_state.cur_player_water >= 2 && !game_view.game_state.has_paid_to_draw {
             actions.push(Action::DrawCard);
         }
 

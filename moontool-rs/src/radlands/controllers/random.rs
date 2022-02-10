@@ -6,9 +6,9 @@ use crate::radlands::*;
 pub struct RandomController;
 
 impl PlayerController for RandomController {
-    fn choose_action<'a, 'g, 'ctype: 'g>(
+    fn choose_action<'a, 'v, 'g: 'v, 'ctype: 'g>(
         &self,
-        _game_state: &'g GameState<'ctype>,
+        _game_view: &'v GameView<'g, 'ctype>,
         actions: &'a [Action<'ctype>],
     ) -> &'a Action<'ctype> {
         let mut rng = thread_rng();
@@ -19,9 +19,9 @@ impl PlayerController for RandomController {
         chosen_action
     }
 
-    fn choose_play_location<'g, 'ctype: 'g>(
+    fn choose_play_location<'v, 'g: 'v, 'ctype: 'g>(
         &self,
-        _game_state: &'g GameState<'ctype>,
+        _game_view: &'v GameView<'g, 'ctype>,
         _person: &Person<'ctype>,
         locations: &[PlayLocation],
     ) -> PlayLocation {
@@ -33,9 +33,9 @@ impl PlayerController for RandomController {
         *chosen_location
     }
 
-    fn choose_card_to_damage<'g, 'ctype: 'g>(
+    fn choose_card_to_damage<'v, 'g: 'v, 'ctype: 'g>(
         &self,
-        _game_state: &'g GameState<'ctype>,
+        _game_view: &'v GameView<'g, 'ctype>,
         target_locs: &[CardLocation],
     ) -> CardLocation {
         let mut rng = thread_rng();
@@ -46,9 +46,9 @@ impl PlayerController for RandomController {
         *chosen_target
     }
 
-    fn choose_card_to_restore<'g, 'ctype: 'g>(
+    fn choose_card_to_restore<'v, 'g: 'v, 'ctype: 'g>(
         &self,
-        _game_state: &'g GameState<'ctype>,
+        _game_view: &'v GameView<'g, 'ctype>,
         target_locs: &[PlayerCardLocation],
     ) -> PlayerCardLocation {
         let mut rng = thread_rng();

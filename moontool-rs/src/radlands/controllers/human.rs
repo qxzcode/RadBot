@@ -37,13 +37,13 @@ impl HumanController {
 }
 
 impl PlayerController for HumanController {
-    fn choose_action<'a, 'g, 'ctype: 'g>(
+    fn choose_action<'a, 'v, 'g: 'v, 'ctype: 'g>(
         &self,
-        game_state: &'g GameState<'ctype>,
+        game_view: &'v GameView<'g, 'ctype>,
         actions: &'a [Action<'ctype>],
     ) -> &'a Action<'ctype> {
         // print the game state
-        println!("\n{}\n", game_state);
+        println!("\n{}\n", game_view.game_state);
 
         // print the available actions
         println!("Available actions:");
@@ -56,13 +56,13 @@ impl PlayerController for HumanController {
         &actions[action_number - 1]
     }
 
-    fn choose_play_location<'g, 'ctype: 'g>(
+    fn choose_play_location<'v, 'g: 'v, 'ctype: 'g>(
         &self,
-        game_state: &'g GameState<'ctype>,
+        game_view: &'v GameView<'g, 'ctype>,
         person: &Person<'ctype>,
         locations: &[PlayLocation],
     ) -> PlayLocation {
-        let table_columns = game_state.cur_player().columns.iter().map(|col| {
+        let table_columns = game_view.my_state().columns.iter().map(|col| {
             vec![
                 style_person_slot(&col.person_slots[1]),
                 style_person_slot(&col.person_slots[0]),
@@ -86,22 +86,22 @@ impl PlayerController for HumanController {
         locations[loc_number - 1]
     }
 
-    fn choose_card_to_damage<'g, 'ctype: 'g>(
+    fn choose_card_to_damage<'v, 'g: 'v, 'ctype: 'g>(
         &self,
-        game_state: &'g GameState<'ctype>,
+        game_view: &'v GameView<'g, 'ctype>,
         target_locs: &[CardLocation],
     ) -> CardLocation {
-        print_card_selection(game_state, target_locs);
+        print_card_selection(game_view.game_state, target_locs);
         let loc_number = self.prompt_for_number("Choose a card to damage: ", 1..=target_locs.len());
         target_locs[loc_number - 1]
     }
 
-    fn choose_card_to_restore<'g, 'ctype: 'g>(
+    fn choose_card_to_restore<'v, 'g: 'v, 'ctype: 'g>(
         &self,
-        game_state: &'g GameState<'ctype>,
+        game_view: &'v GameView<'g, 'ctype>,
         target_locs: &[PlayerCardLocation],
     ) -> PlayerCardLocation {
-        print_player_card_selection(game_state, game_state.cur_player, target_locs);
+        print_player_card_selection(game_view.game_state, game_view.player, target_locs);
         let loc_number =
             self.prompt_for_number("Choose a card to restore: ", 1..=target_locs.len());
         target_locs[loc_number - 1]
