@@ -284,7 +284,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
         // resolve/advance events
         if let Some(event) = self.my_state_mut().events[0].take() {
             // resolve the first event
-            event.resolve(self);
+            event.resolve(self)?;
 
             // discard it if it's not Raiders
             if event.as_raiders().is_none() {
@@ -391,7 +391,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
     }
 
     /// Plays or advances this player's Raiders event.
-    pub fn raid(&'v mut self) {
+    pub fn raid(&'v mut self) -> Result<(), GameResult> {
         // search for the Raiders event in the event queue
         for i in 0..self.my_state().events.len() {
             if let Some(event) = self.my_state().events[i] {
@@ -399,7 +399,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
                     // found the raiders event
                     if i == 0 {
                         // it's the first event, so resolve and remove it
-                        raiders.resolve(self);
+                        raiders.resolve(self)?;
                         self.my_state_mut().events[0] = None;
                     } else {
                         // it's not the first event, so advance it if possible
@@ -408,7 +408,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
                             events[i - 1] = events[i].take();
                         }
                     }
-                    return;
+                    return Ok(());
                 }
             }
         }
@@ -416,6 +416,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
         // if we get here, the raiders event was not found in the event queue;
         // add it to the queue
         self.play_event(&RaidersEvent);
+        Ok(())
     }
 
     /// Plays an event into this player's event queue.
@@ -656,7 +657,10 @@ pub trait EventType {
     fn resolve_turns(&self) -> u8;
 
     /// Resolves the event. Takes a view from the perspective of this event's owner.
-    fn resolve<'v, 'g: 'v, 'ctype: 'g>(&self, game_view: &'v mut GameView<'g, 'ctype>);
+    fn resolve<'v, 'g: 'v, 'ctype: 'g>(
+        &self,
+        game_view: &'v mut GameView<'g, 'ctype>,
+    ) -> Result<(), GameResult>;
 
     /// Returns this event if it is the Raiders event, otherwise None.
     fn as_raiders(&self) -> Option<&RaidersEvent> {
@@ -694,8 +698,32 @@ impl EventType for RaidersEvent {
         2
     }
 
-    fn resolve<'v, 'g: 'v, 'ctype: 'g>(&self, game_view: &'v mut GameView<'g, 'ctype>) {
-        // todo!("resolve Raiders event");
+    fn resolve<'v, 'g: 'v, 'ctype: 'g>(
+        &self,
+        game_view: &'v mut GameView<'g, 'ctype>,
+    ) -> Result<(), GameResult> {
+        // have the other player choose one of their camps to damage
+        let target_locs = game_view
+            .other_state()
+            .enumerate_columns()
+            .filter_map(|(col_index, col)| {
+                if col.camp.is_destroyed() {
+                    None
+                } else {
+                    Some(CardLocation::new(
+                        col_index,
+                        CardRowIndex::camp(),
+                        game_view.player.other(),
+                    ))
+                }
+            })
+            .collect_vec();
+        let target_loc = game_view
+            .other_controller
+            .choose_card_to_damage(game_view, &target_locs);
+
+        // damage the camp
+        game_view.game_state.damage_card_at(target_loc)
     }
 
     fn as_raiders(&self) -> Option<&RaidersEvent> {
@@ -751,7 +779,7 @@ impl IconEffect {
                 game_view.gain_punk()?;
             }
             IconEffect::Raid => {
-                game_view.raid();
+                game_view.raid()?;
             }
         }
         Ok(())
