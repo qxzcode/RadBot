@@ -280,6 +280,15 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
         self.game_state.player_mut(self.player.other())
     }
 
+    pub fn other_view_mut(&'v mut self) -> GameView<'v, 'ctype> {
+        GameView::new(
+            self.game_state,
+            self.player.other(),
+            self.other_controller,
+            self.my_controller,
+        )
+    }
+
     fn do_turn(&'v mut self, is_first_turn: bool) -> Result<(), GameResult> {
         // resolve/advance events
         if let Some(event) = self.my_state_mut().events[0].take() {
@@ -716,7 +725,9 @@ impl EventType for RaidersEvent {
                 }
             })
             .collect_vec();
-        game_view.choose_and_damage_card(&target_locs)
+        game_view
+            .other_view_mut()
+            .choose_and_damage_card(&target_locs)
     }
 
     fn as_raiders(&self) -> Option<&RaidersEvent> {

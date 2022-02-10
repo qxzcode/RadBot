@@ -21,8 +21,8 @@ fn main() {
 fn do_game(camp_types: &[CampType], person_types: &[PersonType]) {
     let hc1 = HumanController { label: "Human 1" };
     let hc2 = HumanController { label: "Human 2" };
-    let hc1 = RandomController;
-    let hc2 = RandomController;
+    // let hc1 = RandomController;
+    // let hc2 = RandomController;
     let mut game_state = GameState::new(camp_types, person_types);
 
     for turn_num in 1.. {
@@ -39,4 +39,6 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType]) {
             break;
         }
     }
+
+    println!("\nFinal state:\n{}", game_state);
 }
