@@ -1,3 +1,4 @@
+pub mod abilities;
 pub mod camps;
 pub mod controllers;
 pub mod locations;
@@ -13,6 +14,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::mem;
 
+use self::abilities::Ability;
 use self::camps::CampType;
 use self::controllers::PlayerController;
 use self::locations::*;
@@ -122,7 +124,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                     [person_row_index.as_usize()];
                 let person = slot.as_mut().expect("Tried to damage an empty person slot");
                 match person {
-                    Person::Punk(card_type) => {
+                    Person::Punk(Punk { card_type, .. }) => {
                         // return the card to the top of the deck
                         self.deck.push(*card_type);
 
@@ -131,19 +133,20 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                     }
                     Person::NonPunk(NonPunk {
                         person_type,
-                        is_injured,
+                        status,
                     }) => {
-                        if *is_injured {
+                        if *status == NonPunkStatus::Injured {
                             // the person was already injured, so now it's dead;
                             // discard the card and empty the slot
                             self.discard.push(PersonOrEventType::Person(*person_type));
                             *slot = None;
                         } else {
                             // injure the person
-                            *is_injured = true;
+                            *status = NonPunkStatus::Injured;
                         }
                     }
                 }
+                // TODO: if the person was destroyed and behind another person, shift the other down
             }
             Err(()) => {
                 // damage the camp in the given column and check for win condition
@@ -334,6 +337,14 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
             //...
         }
 
+        // set all camps and uninjured people to be ready
+        for col in &mut self.my_state_mut().columns {
+            col.camp.set_ready(true);
+            for person in col.people_mut() {
+                person.set_ready();
+            }
+        }
+
         // finally, switch whose turn it is
         self.game_state.cur_player = self.game_state.cur_player.other();
 
@@ -445,7 +456,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
     /// Does nothing if the player's board is full.
     pub fn gain_punk(&mut self) -> Result<(), GameResult> {
         if self.my_state().has_empty_person_slot() {
-            let punk = Person::Punk(self.game_state.draw_card()?);
+            let punk = Person::new_punk(self.game_state.draw_card()?);
             self.play_person(punk);
         }
         Ok(())
@@ -507,8 +518,11 @@ pub enum Action<'ctype> {
     /// Junk a card from the hand to use its junk effect.
     JunkCard(PersonOrEventType<'ctype>),
 
-    /// Use an ability of a ready person or camp.
-    UseAbility(/*TODO*/),
+    /// Use an ability of a ready person.
+    UsePersonAbility(&'ctype dyn Ability, PlayLocation),
+
+    /// Use an ability of a ready camp.
+    UseCampAbility(&'ctype dyn Ability, ColumnIndex),
 
     /// End the current player's turn, taking Water Silo if possible.
     EndTurn,
@@ -522,7 +536,10 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
             Action::PlayPerson(person_type) => {
                 // pay the person's cost and remove it from the player's hand
                 game_view.game_state.spend_water(person_type.cost);
-                game_view.my_state_mut().hand.remove_one(PersonOrEventType::Person(person_type));
+                game_view
+                    .my_state_mut()
+                    .hand
+                    .remove_one(PersonOrEventType::Person(person_type));
 
                 // play the person onto the board
                 game_view.play_person(Person::new_non_punk(person_type));
@@ -532,7 +549,10 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
             Action::PlayEvent(event_type) => {
                 // pay the event's cost and remove it from the player's hand
                 game_view.game_state.spend_water(event_type.cost());
-                game_view.my_state_mut().hand.remove_one(PersonOrEventType::Event(event_type));
+                game_view
+                    .my_state_mut()
+                    .hand
+                    .remove_one(PersonOrEventType::Event(event_type));
 
                 // add the event to the event queue
                 game_view.play_event(event_type);
@@ -544,7 +564,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                 game_view.draw_card_into_hand()?;
                 game_view.game_state.has_paid_to_draw = true;
                 Ok(false)
-            },
+            }
             Action::JunkCard(card) => {
                 // move the card to the discard pile
                 game_view.my_state_mut().hand.remove_one(card);
@@ -554,16 +574,42 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                 card.junk_effect().perform(game_view)?;
 
                 Ok(false)
-            },
-            Action::UseAbility(/*TODO*/) => {
-                todo!("perform Action::UseAbility");
+            }
+            Action::UsePersonAbility(ability, location) => {
+                // pay the ability's cost
+                game_view.game_state.spend_water(ability.cost(game_view));
+
+                // mark the person as no longer ready
+                game_view
+                    .my_state_mut()
+                    .person_slot_mut(location)
+                    .expect("Tried to use a person ability, but there was no person in the slot")
+                    .set_not_ready();
+
+                // perform the ability
+                ability.perform(game_view)?;
+
                 Ok(false)
-            },
+            }
+            Action::UseCampAbility(ability, column_index) => {
+                // pay the ability's cost
+                game_view.game_state.spend_water(ability.cost(game_view));
+
+                // mark the camp as no longer ready
+                let camp = &mut game_view.my_state_mut().columns[column_index.as_usize()].camp;
+                camp.set_ready(false);
+
+                // perform the ability
+                ability.perform(game_view)?;
+
+                Ok(false)
+            }
             Action::EndTurn => {
                 // take Water Silo if possible, then end the turn
-                game_view.my_state_mut().has_water_silo = game_view.game_state.cur_player_water >= 1;
+                game_view.my_state_mut().has_water_silo =
+                    game_view.game_state.cur_player_water >= 1;
                 Ok(true)
-            },
+            }
         }
     }
 }
@@ -571,11 +617,31 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
 impl fmt::Display for Action<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Action::PlayPerson(card) => write!(f, "Play {} (costs {WATER}{} water{RESET})", card.styled_name(), card.cost),
-            Action::PlayEvent(card) => write!(f, "Play {} (costs {WATER}{} water{RESET})", card.styled_name(), card.cost()),
+            Action::PlayPerson(card) => write!(
+                f,
+                "Play {} (costs {WATER}{} water{RESET})",
+                card.styled_name(),
+                card.cost
+            ),
+            Action::PlayEvent(card) => write!(
+                f,
+                "Play {} (costs {WATER}{} water{RESET})",
+                card.styled_name(),
+                card.cost()
+            ),
             Action::DrawCard => write!(f, "Draw a card (costs {WATER}2 water{RESET})"),
-            Action::JunkCard(card) => write!(f, "Junk {} (effect: {:?})", card.styled_name(), card.junk_effect()),
-            Action::UseAbility(/*TODO*/) => write!(f, "Use ability: [TODO]"),
+            Action::JunkCard(card) => write!(
+                f,
+                "Junk {} (effect: {:?})",
+                card.styled_name(),
+                card.junk_effect()
+            ),
+            Action::UsePersonAbility(ability, location) => {
+                write!(f, "Use person's ability: [TODO]")
+            }
+            Action::UseCampAbility(ability, column_index) => {
+                write!(f, "Use camp's ability: [TODO]")
+            }
             Action::EndTurn => write!(f, "End turn, taking {WATER}Water Silo{RESET} if possible"),
         }
     }

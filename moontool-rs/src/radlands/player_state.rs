@@ -43,6 +43,11 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         }
     }
 
+    /// Returns the person slot at the given location.
+    pub fn person_slot_mut(&mut self, loc: PlayLocation) -> Option<&mut Person<'ctype>> {
+        self.columns[loc.column().as_usize()].person_slot_mut(loc.row())
+    }
+
     /// Returns whether this player can use the raid effect to play or advance
     /// their Raiders event.
     pub fn can_raid(&self) -> bool {
@@ -128,6 +133,11 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         self.columns.iter().flat_map(|col| col.people())
     }
 
+    /// Returns an iterator over the people on this player's board as mutable references.
+    pub fn people_mut(&mut self) -> impl Iterator<Item = &mut Person<'ctype>> {
+        self.columns.iter_mut().flat_map(|col| col.people_mut())
+    }
+
     /// Returns an iterator over the locations of this player's unprotected cards.
     pub fn unprotected_card_locs(&self) -> impl Iterator<Item = PlayerCardLocation> + '_ {
         self.enumerate_columns().filter_map(|(col_index, col)| {
@@ -146,7 +156,9 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
 
     /// Returns an iterator that enumerates the columns of this player's board with strongly-typed
     /// column indices.
-    pub fn enumerate_columns(&self) -> impl Iterator<Item = (ColumnIndex, &CardColumn)> + '_ {
+    pub fn enumerate_columns(
+        &self,
+    ) -> impl Iterator<Item = (ColumnIndex, &CardColumn<'ctype>)> + '_ {
         self.columns
             .iter()
             .enumerate()
@@ -155,12 +167,23 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
 
     /// Returns an iterator that enumerates the camps of this player's board with strongly-typed
     /// locations.
-    pub fn enumerate_camps(&self) -> impl Iterator<Item = (PlayerCardLocation, &Camp)> + '_ {
+    pub fn enumerate_camps(
+        &self,
+    ) -> impl Iterator<Item = (PlayerCardLocation, &Camp<'ctype>)> + '_ {
         self.enumerate_columns().map(|(col_index, col)| {
             (
                 PlayerCardLocation::new(col_index, CardRowIndex::camp()),
                 &col.camp,
             )
+        })
+    }
+
+    /// Returns an iterator that enumerates the people of this player's board with strongly-typed
+    /// locations.
+    pub fn enumerate_people(&self) -> impl Iterator<Item = (PlayLocation, &Person<'ctype>)> + '_ {
+        self.enumerate_columns().flat_map(|(col_index, col)| {
+            col.enumerate_people()
+                .map(move |(row_index, person)| (PlayLocation::new(col_index, row_index), person))
         })
     }
 
@@ -196,19 +219,41 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
             actions.push(Action::DrawCard);
         }
 
-        // actions to use an ability
-        for person in self.columns[0].people() {
+        // actions to use a person's ability
+        for (loc, person) in self.enumerate_people() {
             match person {
-                Person::Punk(_) => {
+                Person::Punk(Punk {
+                    card_type,
+                    is_ready,
+                }) => {
                     // punks don't have abilities
                     // TODO: unless they're given one by another card
+                    if *is_ready {
+                        // actions.push(Action::UseAbility(...));
+                    }
                 }
                 Person::NonPunk(NonPunk {
                     person_type,
-                    is_injured,
+                    status,
                 }) => {
-                    // TODO: check if they're ready...
-                    actions.push(Action::UseAbility(/*TODO*/));
+                    if *status == NonPunkStatus::Ready {
+                        for ability in &person_type.abilities {
+                            if ability.can_afford_and_perform(game_view) {
+                                actions.push(Action::UsePersonAbility(ability.as_ref(), loc));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // actions to use a camp's ability
+        for (loc, camp) in self.enumerate_camps() {
+            if camp.is_ready() {
+                for ability in &camp.camp_type.abilities {
+                    if ability.can_afford_and_perform(game_view) {
+                        actions.push(Action::UseCampAbility(ability.as_ref(), loc.column()));
+                    }
                 }
             }
         }
@@ -277,16 +322,38 @@ impl<'ctype> CardColumn<'ctype> {
             camp: Camp {
                 camp_type,
                 status: CampStatus::Undamaged,
+                is_ready: true,
             },
             person_slots: [None, None],
         }
     }
 
+    /// Returns the person slot at the given location.
+    pub fn person_slot_mut(&mut self, loc: PersonRowIndex) -> Option<&mut Person<'ctype>> {
+        self.person_slots[loc.as_usize()].as_mut()
+    }
+
     /// Returns an iterator over the people in the column.
     pub fn people(&self) -> impl Iterator<Item = &Person<'ctype>> {
+        self.person_slots.iter().filter_map(|slot| slot.as_ref())
+    }
+
+    /// Returns an iterator over the people in the column as mutable references.
+    pub fn people_mut(&mut self) -> impl Iterator<Item = &mut Person<'ctype>> {
+        self.person_slots
+            .iter_mut()
+            .filter_map(|slot| slot.as_mut())
+    }
+
+    /// Returns an iterator that enumerates the people in the column.
+    pub fn enumerate_people(&self) -> impl Iterator<Item = (PersonRowIndex, &Person<'ctype>)> {
         self.person_slots
             .iter()
-            .filter_map(|person| person.as_ref())
+            .enumerate()
+            .filter_map(|(i, slot)| {
+                slot.as_ref()
+                    .map(|person| (PersonRowIndex::from(i), person))
+            })
     }
 
     /// Returns whether this column has any damaged cards that can be restored.
@@ -351,6 +418,9 @@ pub struct Camp<'ctype> {
 
     /// The damage status of the camp.
     pub status: CampStatus,
+
+    /// Whether the camp is ready.
+    is_ready: bool,
 }
 
 impl Camp<'_> {
@@ -383,6 +453,16 @@ impl Camp<'_> {
     pub fn is_restorable(&self) -> bool {
         self.status == CampStatus::Damaged
     }
+
+    /// Returns whether the camp is ready to use an ability.
+    pub fn is_ready(&self) -> bool {
+        self.is_ready && self.status != CampStatus::Destroyed
+    }
+
+    /// Sets whether the camp is ready. Has no effect if the camp is destroyed.
+    pub fn set_ready(&mut self, is_ready: bool) {
+        self.is_ready = is_ready;
+    }
 }
 
 impl StyledName for Camp<'_> {
@@ -413,32 +493,98 @@ pub enum CampStatus {
 
 /// A person played on the board (a punk or face-up person).
 pub enum Person<'ctype> {
-    Punk(PersonOrEventType<'ctype>),
+    Punk(Punk<'ctype>),
     NonPunk(NonPunk<'ctype>),
 }
 
+/// A punk played on the board.
+pub struct Punk<'ctype> {
+    /// The identity of the face-down card.
+    pub card_type: PersonOrEventType<'ctype>,
+
+    /// Whether the punk is ready.
+    pub is_ready: bool,
+}
+
+/// A non-punk (face-up) person played on the board.
+pub struct NonPunk<'ctype> {
+    pub person_type: &'ctype PersonType,
+    pub status: NonPunkStatus,
+}
+
+/// Enum representing the damage/readiness of a non-punk person.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum NonPunkStatus {
+    /// Not injured and ready.
+    Ready,
+    /// Not injured but not ready.
+    NotReady,
+    /// Injured.
+    Injured,
+}
+
 impl<'ctype> Person<'ctype> {
-    /// Creates a fresh person from a person type.
-    pub(super) fn new_non_punk(person_type: &'ctype PersonType) -> Self {
-        Person::NonPunk(NonPunk {
-            person_type,
-            is_injured: false,
+    /// Creates a non-ready punk from a card type.
+    pub(super) fn new_punk(card_type: PersonOrEventType<'ctype>) -> Self {
+        Person::Punk(Punk {
+            card_type,
+            is_ready: false,
         })
     }
 
-    /// Returns whether this person is damaged and can be restored.
+    /// Creates an ununjured but non-ready person from a person type.
+    pub(super) fn new_non_punk(person_type: &'ctype PersonType) -> Self {
+        Person::NonPunk(NonPunk {
+            person_type,
+            status: NonPunkStatus::NotReady,
+        })
+    }
+
+    /// Returns whether this person is injured and can be restored.
     pub fn is_restorable(&self) -> bool {
-        matches!(self, Person::NonPunk(NonPunk { is_injured, .. }) if *is_injured)
+        matches!(self, Person::NonPunk(NonPunk { status, .. }) if *status == NonPunkStatus::Injured)
     }
 
     /// Restores this person.
-    /// Panics if the person is not damaged.
+    /// Panics if the person is not injured.
     pub fn restore(&mut self) {
         match self {
             Person::Punk(_) => panic!("Tried to restore a punk"),
             Person::NonPunk(non_punk) => {
-                assert!(non_punk.is_injured, "Tried to restore an undamaged person");
-                non_punk.is_injured = false;
+                assert!(
+                    non_punk.status == NonPunkStatus::Injured,
+                    "Tried to restore an undamaged person"
+                );
+                non_punk.status = NonPunkStatus::NotReady;
+            }
+        }
+    }
+
+    /// Sets this person to be ready. Has no effect if the person is injured or already ready.
+    pub fn set_ready(&mut self) {
+        match self {
+            Person::Punk(punk) => {
+                punk.is_ready = true;
+            }
+            Person::NonPunk(non_punk) => {
+                if non_punk.status == NonPunkStatus::NotReady {
+                    non_punk.status = NonPunkStatus::Ready;
+                }
+            }
+        }
+    }
+
+    /// Sets this person to be not ready. Has no effect if the person is injured or already not
+    /// ready.
+    pub fn set_not_ready(&mut self) {
+        match self {
+            Person::Punk(punk) => {
+                punk.is_ready = false;
+            }
+            Person::NonPunk(non_punk) => {
+                if non_punk.status == NonPunkStatus::Ready {
+                    non_punk.status = NonPunkStatus::NotReady;
+                }
             }
         }
     }
@@ -451,13 +597,13 @@ impl StyledName for Person<'_> {
             Person::Punk(_) => StyledString::new("Punk", PUNK),
             Person::NonPunk(NonPunk {
                 person_type,
-                is_injured,
+                status,
             }) => StyledString::new(
                 person_type.name,
-                if *is_injured {
-                    PERSON_INJURED
-                } else {
-                    PERSON_READY
+                match status {
+                    NonPunkStatus::Ready => PERSON_READY,
+                    NonPunkStatus::NotReady => PERSON_NOT_READY,
+                    NonPunkStatus::Injured => PERSON_INJURED,
                 },
             ),
         }
@@ -472,10 +618,4 @@ impl StyledName for Option<Person<'_>> {
             None => StyledString::new("<none>", EMPTY),
         }
     }
-}
-
-/// A non-punk (face-up) person played on the board.
-pub struct NonPunk<'ctype> {
-    pub person_type: &'ctype PersonType,
-    pub is_injured: bool,
 }
