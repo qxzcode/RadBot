@@ -365,6 +365,20 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
         self.choose_and_damage_card(&target_locs)
     }
 
+    /// Has this player damage any opponent card.
+    pub fn damage_any_enemy(&mut self) -> Result<(), GameResult> {
+        // get all possible targets
+        let target_player = self.player.other();
+        let target_locs = self
+            .other_state()
+            .card_locs()
+            .map(|loc| loc.for_player(target_player))
+            .collect_vec();
+
+        // ask the player to damage one of them
+        self.choose_and_damage_card(&target_locs)
+    }
+
     /// Has this player injure an unprotected opponent person.
     /// Assumes that the opponent has at least one person.
     pub fn injure_enemy(&mut self) {

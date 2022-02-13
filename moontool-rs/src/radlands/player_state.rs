@@ -144,6 +144,15 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         self.columns.iter_mut().flat_map(|col| col.people_mut())
     }
 
+    /// Returns an iterator over the locations of this player's cards (people
+    /// and non-destroyed camps).
+    pub fn card_locs(&self) -> impl Iterator<Item = PlayerCardLocation> + '_ {
+        self.enumerate_columns().flat_map(|(col_index, col)| {
+            col.card_rows()
+                .map(move |row_index| PlayerCardLocation::new(col_index, row_index))
+        })
+    }
+
     /// Returns an iterator over the locations of this player's unprotected cards.
     pub fn unprotected_card_locs(&self) -> impl Iterator<Item = PlayerCardLocation> + '_ {
         self.enumerate_columns().filter_map(|(col_index, col)| {
@@ -228,10 +237,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         // actions to use a person's ability
         for (loc, person) in self.enumerate_people() {
             match person {
-                Person::Punk(Punk {
-                    card_type,
-                    is_ready,
-                }) => {
+                Person::Punk(Punk { is_ready, .. }) => {
                     // punks don't have abilities
                     // TODO: unless they're given one by another card
                     if *is_ready {
@@ -414,6 +420,29 @@ impl<'ctype> CardColumn<'ctype> {
             // the (non-destroyed) camp is the only thing in the column
             Some(CardRowIndex::camp())
         }
+    }
+
+    /// Returns an iterator over the row indices of the cards in the column (people or non-destroyed
+    /// camp).
+    pub fn card_rows(&self) -> impl Iterator<Item = CardRowIndex> + '_ {
+        let camp_row = if self.camp.is_destroyed() {
+            None
+        } else {
+            Some(CardRowIndex::camp())
+        };
+        let person_rows = self
+            .person_slots
+            .iter()
+            .enumerate()
+            .filter_map(|(row, slot)| {
+                if slot.is_some() {
+                    let row: PersonRowIndex = row.into();
+                    Some(row.into())
+                } else {
+                    None
+                }
+            });
+        camp_row.into_iter().chain(person_rows)
     }
 }
 

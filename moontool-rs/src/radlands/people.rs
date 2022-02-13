@@ -1,5 +1,4 @@
 use super::abilities::*;
-use super::player_state::Person;
 use super::styles::*;
 use super::{GameResult, GameView, IconEffect};
 
@@ -42,10 +41,7 @@ pub fn get_person_types() -> Vec<PersonType> {
                 // if you have a punk, damage (costs 1 water):
                 ability! {
                     cost => 1;
-                    can_perform(game_view) => {
-                        let has_punk = game_view.my_state().has_punk();
-                        has_punk && IconEffect::Damage.can_perform(game_view)
-                    };
+                    can_perform(game_view) => game_view.my_state().has_punk();
                     perform => IconEffect::Damage;
                 },
             ],
@@ -56,8 +52,12 @@ pub fn get_person_types() -> Vec<PersonType> {
             junk_effect: IconEffect::Restore,
             cost: 1,
             abilities: vec![
-                // damage any [opponent?] card (costs 2 water):
-                // TODO
+                // damage any (opponent) card (costs 2 water):
+                ability! {
+                    cost => 2;
+                    can_perform => true;
+                    perform(game_view) => game_view.damage_any_enemy();
+                },
             ],
         },
         PersonType {
