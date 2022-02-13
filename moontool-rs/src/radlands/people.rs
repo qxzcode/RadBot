@@ -43,10 +43,7 @@ pub fn get_person_types() -> Vec<PersonType> {
                 ability! {
                     cost => 1;
                     can_perform(game_view) => {
-                        let has_punk = game_view
-                            .my_state()
-                            .people()
-                            .any(|person| matches!(person, Person::Punk(_)));
+                        let has_punk = game_view.my_state().has_punk();
                         has_punk && IconEffect::Damage.can_perform(game_view)
                     };
                     perform => IconEffect::Damage;

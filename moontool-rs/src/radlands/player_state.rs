@@ -115,6 +115,12 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
             .any(|slot| slot.is_none())
     }
 
+    /// Returns whether this player has a punk on their board.
+    pub fn has_punk(&self) -> bool {
+        self.people()
+            .any(|person| matches!(person, Person::Punk(_)))
+    }
+
     /// Returns whether this player has any damaged cards that they can restore.
     pub fn has_restorable_card(&self) -> bool {
         self.columns.iter().any(|col| col.has_restorable_card())
