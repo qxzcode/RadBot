@@ -802,7 +802,7 @@ impl EventType for RaidersEvent {
 }
 
 /// Enum representing basic icon effects for abilities and junk effects.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum IconEffect {
     Damage,
     Injure,

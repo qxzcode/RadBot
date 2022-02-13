@@ -1,4 +1,4 @@
-use super::abilities::{Ability, IconAbility};
+use super::abilities::*;
 
 /// A type of camp card.
 pub struct CampType {

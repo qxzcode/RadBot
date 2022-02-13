@@ -24,9 +24,10 @@ pub trait Ability {
     }
 }
 
-pub struct IconAbility {
-    pub effect: IconEffect,
-    pub cost: u32,
+/// An ability that performs an IconEffect.
+struct IconAbility {
+    cost: u32,
+    effect: IconEffect,
 }
 
 impl Ability for IconAbility {
@@ -45,3 +46,52 @@ impl Ability for IconAbility {
         self.effect.perform(game_view)
     }
 }
+
+/// Creates an ability that performs an IconEffect.
+pub fn icon_ability(cost: u32, effect: IconEffect) -> Box<dyn Ability> {
+    Box::new(IconAbility { cost, effect })
+}
+
+/// Macro for easily creating custom abilities.
+macro_rules! ability {
+    (
+        cost => $cost:expr;
+        can_perform($game_view_1:ident) => $can_perform:expr;
+        perform($game_view_2:ident) => $perform:expr;
+    ) => {{
+        struct MacroAbility;
+        impl Ability for MacroAbility {
+            fn cost<'v, 'g: 'v, 'ctype: 'g>(&self, _game_view: &'v GameView<'g, 'ctype>) -> u32 {
+                $cost
+            }
+
+            fn can_perform<'v, 'g: 'v, 'ctype: 'g>(
+                &self,
+                $game_view_1: &'v GameView<'g, 'ctype>,
+            ) -> bool {
+                $can_perform
+            }
+
+            fn perform<'v, 'g: 'v, 'ctype: 'g>(
+                &self,
+                $game_view_2: &'v mut GameView<'g, 'ctype>,
+            ) -> Result<(), GameResult> {
+                $perform
+            }
+        }
+        Box::new(MacroAbility)
+    }};
+    (
+        cost => $cost:expr;
+        can_perform($game_view_1:ident) => $can_perform:expr;
+        perform => IconEffect::$perform_effect:ident;
+    ) => {
+        ability! {
+            cost => $cost;
+            can_perform($game_view_1) => $can_perform;
+            perform(game_view) => IconEffect::$perform_effect.perform(game_view);
+        }
+    };
+}
+
+pub(crate) use ability;
