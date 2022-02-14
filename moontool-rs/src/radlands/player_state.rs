@@ -44,6 +44,11 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
     }
 
     /// Returns the person slot at the given location.
+    pub fn person_slot(&self, loc: PlayLocation) -> Option<&Person<'ctype>> {
+        self.columns[loc.column().as_usize()].person_slot(loc.row())
+    }
+
+    /// Returns the person slot at the given location as mutable.
     pub fn person_slot_mut(&mut self, loc: PlayLocation) -> Option<&mut Person<'ctype>> {
         self.columns[loc.column().as_usize()].person_slot_mut(loc.row())
     }
@@ -137,11 +142,6 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
     /// Returns an iterator over the people on this player's board.
     pub fn people(&self) -> impl Iterator<Item = &Person<'ctype>> {
         self.columns.iter().flat_map(|col| col.people())
-    }
-
-    /// Returns an iterator over the people on this player's board as mutable references.
-    pub fn people_mut(&mut self) -> impl Iterator<Item = &mut Person<'ctype>> {
-        self.columns.iter_mut().flat_map(|col| col.people_mut())
     }
 
     /// Returns an iterator over the locations of this player's cards (people
@@ -276,7 +276,12 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         actions
     }
 
-    pub fn fmt(&self, f: &mut fmt::Formatter, is_cur_player: bool) -> fmt::Result {
+    pub fn fmt(
+        &self,
+        f: &mut fmt::Formatter,
+        is_cur_player: bool,
+        actions: &[Action<'ctype>],
+    ) -> fmt::Result {
         let prefix = format!("\x1b[{};1m|{RESET} ", if is_cur_player { 93 } else { 90 });
 
         writeln!(f, "{prefix}{HEADING}Hand:{RESET}")?;
@@ -302,6 +307,26 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
                 col.camp.styled_name(),
             ]
         });
+        let mut table_columns = table_columns.collect_vec();
+
+        // tag people that have ability actions
+        for (i, action) in actions.iter().enumerate().rev() {
+            let tag = StyledString::plain(&format!("({}) ", i + 1));
+            match action {
+                Action::UsePersonAbility(_ability, loc) => {
+                    let cell =
+                        &mut table_columns[loc.column().as_usize()][1 - loc.row().as_usize()];
+                    *cell = &tag + cell;
+                }
+                Action::UseCampAbility(_ability, col_index) => {
+                    let col_index = col_index.as_usize();
+                    let cell = &mut table_columns[col_index][2];
+                    *cell = &tag + cell;
+                }
+                _ => {}
+            }
+        }
+
         write!(f, "{}", StyledTable::new(table_columns, &prefix))?;
 
         writeln!(f, "{prefix}{HEADING}Events:{RESET}")?;
@@ -341,6 +366,11 @@ impl<'ctype> CardColumn<'ctype> {
     }
 
     /// Returns the person slot at the given location.
+    pub fn person_slot(&self, loc: PersonRowIndex) -> Option<&Person<'ctype>> {
+        self.person_slots[loc.as_usize()].as_ref()
+    }
+
+    /// Returns the person slot at the given location as mutable.
     pub fn person_slot_mut(&mut self, loc: PersonRowIndex) -> Option<&mut Person<'ctype>> {
         self.person_slots[loc.as_usize()].as_mut()
     }

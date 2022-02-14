@@ -8,14 +8,14 @@ pub struct RandomController;
 impl PlayerController for RandomController {
     fn choose_action<'a, 'v, 'g: 'v, 'ctype: 'g>(
         &self,
-        _game_view: &'v GameView<'g, 'ctype>,
+        game_view: &'v GameView<'g, 'ctype>,
         actions: &'a [Action<'ctype>],
     ) -> &'a Action<'ctype> {
         let mut rng = thread_rng();
         let chosen_action = actions
             .choose(&mut rng)
             .expect("choose_action called with empty actions list");
-        println!("{BOLD}RandomController chose action:{RESET} {chosen_action}");
+        println!("{BOLD}RandomController chose action:{RESET} {}", chosen_action.format(game_view));
         chosen_action
     }
 

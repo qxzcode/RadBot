@@ -40,6 +40,7 @@ pub fn get_person_types() -> Vec<PersonType> {
                 icon_ability(1, IconEffect::GainPunk),
                 // if you have a punk, damage (costs 1 water):
                 ability! {
+                    description => "Damage";
                     cost => 1;
                     can_perform(game_view) => game_view.my_state().has_punk();
                     perform => IconEffect::Damage;
@@ -54,6 +55,7 @@ pub fn get_person_types() -> Vec<PersonType> {
             abilities: vec![
                 // damage any (opponent) card (costs 2 water):
                 ability! {
+                    description => "Damage any (opponent) card";
                     cost => 2;
                     can_perform => true;
                     perform(game_view) => game_view.damage_any_enemy();

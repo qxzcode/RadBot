@@ -2,6 +2,9 @@ use super::{GameResult, GameView, IconEffect};
 
 /// An ability on a camp or person.
 pub trait Ability {
+    /// Returns a description of this ability for display.
+    fn description(&self) -> String;
+
     /// Returns the water cost of this ability.
     fn cost<'v, 'g: 'v, 'ctype: 'g>(&self, game_view: &'v GameView<'g, 'ctype>) -> u32;
 
@@ -31,6 +34,10 @@ struct IconAbility {
 }
 
 impl Ability for IconAbility {
+    fn description(&self) -> String {
+        format!("{:?}", self.effect)
+    }
+
     fn cost<'v, 'g: 'v, 'ctype: 'g>(&self, _game_view: &'v GameView<'g, 'ctype>) -> u32 {
         self.cost
     }
@@ -55,12 +62,17 @@ pub fn icon_ability(cost: u32, effect: IconEffect) -> Box<dyn Ability> {
 /// Macro for easily creating custom abilities.
 macro_rules! ability {
     {
+        description => $description:literal;
         cost => $cost:expr;
         can_perform($game_view_1:ident) => $can_perform:expr;
         perform($game_view_2:ident) => $perform:expr;
     } => {{
         struct MacroAbility;
         impl Ability for MacroAbility {
+            fn description(&self) -> String {
+                $description.to_string()
+            }
+
             fn cost<'v, 'g: 'v, 'ctype: 'g>(&self, _game_view: &'v GameView<'g, 'ctype>) -> u32 {
                 $cost
             }
@@ -83,11 +95,13 @@ macro_rules! ability {
     }};
 
     {
+        description => $description:literal;
         cost => $cost:expr;
         can_perform($game_view_1:ident) => $can_perform:expr;
         perform => IconEffect::$perform_effect:ident;
     } => {
         ability! {
+            description => $description;
             cost => $cost;
             can_perform($game_view_1) => $can_perform;
             perform(game_view) => IconEffect::$perform_effect.perform(game_view);
@@ -95,11 +109,13 @@ macro_rules! ability {
     };
 
     {
+        description => $description:literal;
         cost => $cost:expr;
         can_perform => true;
         perform($game_view_2:ident) => $perform:expr;
     } => {
         ability! {
+            description => $description;
             cost => $cost;
             can_perform(_game_view) => true;
             perform($game_view_2) => $perform;

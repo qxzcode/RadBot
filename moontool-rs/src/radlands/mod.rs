@@ -205,34 +205,56 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
     pub fn gain_water(&mut self) {
         self.cur_player_water += 1;
     }
+
+    /// Returns an object for formatting the game state with numbered tags for actions.
+    pub fn action_formatter(&'g self, actions: &'g [Action<'ctype>]) -> GameFormatter<'g, 'ctype> {
+        GameFormatter {
+            game: self,
+            actions,
+        }
+    }
 }
 
 impl fmt::Display for GameState<'_> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let write_player_header = |f: &mut fmt::Formatter, player: Player| {
+        writeln!(f, "{}", self.action_formatter(&[]))
+    }
+}
+
+/// A helper struct for displaying the game state with numbered tags for actions.
+pub struct GameFormatter<'g, 'ctype> {
+    game: &'g GameState<'ctype>,
+    actions: &'g [Action<'ctype>],
+}
+
+impl fmt::Display for GameFormatter<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let write_player_state = |f: &mut fmt::Formatter, player: Player| {
             let n = player.number();
-            if player == self.cur_player {
+            if player == self.game.cur_player {
                 // current player
                 writeln!(
                     f,
                     "{BOLD}Player {n} ({WATER}{} water{RESET_FG}){RESET}",
-                    self.cur_player_water
-                )
+                    self.game.cur_player_water
+                )?;
             } else {
                 // other player
-                writeln!(f, "Player {n}")
+                writeln!(f, "Player {n}")?;
             }
+
+            let is_cur_player = player == self.game.cur_player;
+            let actions = if is_cur_player { self.actions } else { &[] };
+            self.game.player(player).fmt(f, is_cur_player, actions)
         };
-        write_player_header(f, Player::Player1)?;
-        self.player1.fmt(f, self.cur_player == Player::Player1)?;
+        write_player_state(f, Player::Player1)?;
         writeln!(f)?;
-        write_player_header(f, Player::Player2)?;
-        self.player2.fmt(f, self.cur_player == Player::Player2)?;
+        write_player_state(f, Player::Player2)?;
         writeln!(
             f,
             "\n{} cards in deck, {} in discard",
-            self.deck.len(),
-            self.discard.len()
+            self.game.deck.len(),
+            self.game.discard.len()
         )
     }
 }
@@ -277,10 +299,6 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
 
     pub fn other_state(&self) -> &PlayerState<'ctype> {
         self.game_state.player(self.player.other())
-    }
-
-    pub fn other_state_mut(&mut self) -> &mut PlayerState<'ctype> {
-        self.game_state.player_mut(self.player.other())
     }
 
     pub fn other_view_mut(&'v mut self) -> GameView<'v, 'ctype> {
@@ -626,37 +644,49 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
             }
         }
     }
-}
 
-impl fmt::Display for Action<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    /// Formats the action for display.
+    pub fn format(&self, game_view: &'v GameView<'g, 'ctype>) -> String {
         match *self {
-            Action::PlayPerson(card) => write!(
-                f,
+            Action::PlayPerson(card) => format!(
                 "Play {} (costs {WATER}{} water{RESET})",
                 card.styled_name(),
                 card.cost
             ),
-            Action::PlayEvent(card) => write!(
-                f,
+            Action::PlayEvent(card) => format!(
                 "Play {} (costs {WATER}{} water{RESET})",
                 card.styled_name(),
                 card.cost()
             ),
-            Action::DrawCard => write!(f, "Draw a card (costs {WATER}2 water{RESET})"),
-            Action::JunkCard(card) => write!(
-                f,
+            Action::DrawCard => format!("Draw a card (costs {WATER}2 water{RESET})"),
+            Action::JunkCard(card) => format!(
                 "Junk {} (effect: {:?})",
                 card.styled_name(),
                 card.junk_effect()
             ),
             Action::UsePersonAbility(ability, location) => {
-                write!(f, "Use person's ability: [TODO]")
+                format!(
+                    "Use {}'s ability: {} (costs {WATER}{} water{RESET})",
+                    game_view
+                        .my_state()
+                        .person_slot(location)
+                        .unwrap()
+                        .styled_name(),
+                    ability.description(),
+                    ability.cost(game_view)
+                )
             }
             Action::UseCampAbility(ability, column_index) => {
-                write!(f, "Use camp's ability: [TODO]")
+                format!(
+                    "Use {}'s ability: {} (costs {WATER}{} water{RESET})",
+                    game_view.my_state().columns[column_index.as_usize()]
+                        .camp
+                        .styled_name(),
+                    ability.description(),
+                    ability.cost(game_view)
+                )
             }
-            Action::EndTurn => write!(f, "End turn, taking {WATER}Water Silo{RESET} if possible"),
+            Action::EndTurn => format!("End turn, taking {WATER}Water Silo{RESET} if possible"),
         }
     }
 }
@@ -669,14 +699,6 @@ pub enum PersonOrEventType<'ctype> {
 }
 
 impl PersonOrEventType<'_> {
-    /// Returns the card's name.
-    pub fn name(&self) -> &'static str {
-        match self {
-            PersonOrEventType::Person(person_type) => person_type.name,
-            PersonOrEventType::Event(event_type) => event_type.name(),
-        }
-    }
-
     /// Returns the card's junk effect.
     pub fn junk_effect(&self) -> IconEffect {
         match self {

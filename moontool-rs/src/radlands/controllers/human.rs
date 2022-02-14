@@ -43,12 +43,12 @@ impl PlayerController for HumanController {
         actions: &'a [Action<'ctype>],
     ) -> &'a Action<'ctype> {
         // print the game state
-        println!("\n{}\n", game_view.game_state);
+        println!("\n{}\n", game_view.game_state.action_formatter(actions));
 
         // print the available actions
         println!("Available actions:");
         for (i, action) in actions.iter().enumerate() {
-            println!("  ({})  {action}", i + 1);
+            println!("  ({})  {}", i + 1, action.format(game_view));
         }
 
         // prompt the user for an action
