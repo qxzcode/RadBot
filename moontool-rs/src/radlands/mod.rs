@@ -120,16 +120,17 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         match loc.row().to_person_index() {
             Ok(person_row_index) => {
                 // damage the person
-                let slot = &mut player_state.columns[loc.column().as_usize()].person_slots
-                    [person_row_index.as_usize()];
+                let column = &mut player_state.columns[loc.column().as_usize()];
+                let slot = &mut column.person_slots[person_row_index.as_usize()];
                 let person = slot.as_mut().expect("Tried to damage an empty person slot");
-                match person {
+                let was_destroyed = match person {
                     Person::Punk(Punk { card_type, .. }) => {
                         // return the card to the top of the deck
                         self.deck.push(*card_type);
 
                         // destroy the punk
                         *slot = None;
+                        true
                     }
                     Person::NonPunk(NonPunk {
                         person_type,
@@ -140,13 +141,21 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                             // discard the card and empty the slot
                             self.discard.push(PersonOrEventType::Person(*person_type));
                             *slot = None;
+                            true
                         } else {
                             // injure the person
                             *status = NonPunkStatus::Injured;
+                            false
                         }
                     }
+                };
+
+                // if the person was destroyed and behind another person, shift the other down
+                if was_destroyed && person_row_index == 0.into() {
+                    if let Some(person) = column.person_slots[1].take() {
+                        column.person_slots[0] = Some(person);
+                    }
                 }
-                // TODO: if the person was destroyed and behind another person, shift the other down
             }
             Err(()) => {
                 // damage the camp in the given column and check for win condition
