@@ -18,12 +18,16 @@ fn main() {
     let do_random = std::env::args().any(|arg| arg == "--random");
 
     let num_games = if do_random { 10_000 } else { 1 };
-    for _ in 0..num_games {
-        do_game(&camp_types, &person_types, do_random);
+    let sum: u32 = (0..num_games)
+        .into_iter()
+        .map(|_| do_game(&camp_types, &person_types, do_random))
+        .sum();
+    if num_games > 1 {
+        println!("Average final turn: {}", (sum as f64) / (num_games as f64));
     }
 }
 
-fn do_game(camp_types: &[CampType], person_types: &[PersonType], random: bool) {
+fn do_game(camp_types: &[CampType], person_types: &[PersonType], random: bool) -> u32 {
     let p1: &dyn PlayerController;
     let p2: &dyn PlayerController;
     if random {
@@ -37,6 +41,7 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType], random: bool) {
     // let hc2 = RandomController;
     let mut game_state = GameState::new(camp_types, person_types);
 
+    let mut final_turn = None;
     for turn_num in 1.. {
         println!("\nTurn {}\n", turn_num);
         if let Err(result) = game_state.do_turn(p1, p2, turn_num == 1) {
@@ -48,9 +53,12 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType], random: bool) {
                     GameResult::Tie => "tie!",
                 }
             );
+            final_turn = Some(turn_num);
             break;
         }
     }
 
     println!("\nFinal state:\n{}", game_state);
+
+    final_turn.unwrap()
 }
