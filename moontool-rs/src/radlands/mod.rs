@@ -109,10 +109,20 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         cur_view.do_turn(is_first_turn)
     }
 
-    /// Damages or destroys the card at the given location. If `destroy` is true,
-    /// the card is always destroyed; otherwise, it is damaged.
+    /// Damages or destroys the card at the given location.
+    /// If `destroy` is true, the card is always destroyed; otherwise, it is damaged.
+    /// If `shift` is true and the card is destroyed, any person in front of it is shifted back.
+    ///
+    /// If multiple cards need to be damaged/destroyed at the same time, `damage_cards_at` must be
+    /// used instead.
+    ///
     /// Panics if there is no card there.
-    fn damage_card_at(&mut self, loc: CardLocation, destroy: bool) -> Result<(), GameResult> {
+    fn damage_card_at(
+        &mut self,
+        loc: CardLocation,
+        destroy: bool,
+        shift: bool,
+    ) -> Result<(), GameResult> {
         let player_state = match loc.player() {
             Player::Player1 => &mut self.player1,
             Player::Player2 => &mut self.player2,
@@ -153,11 +163,10 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                     }
                 };
 
-                // if the person was destroyed and behind another person, shift the other down
-                if was_destroyed && person_row_index == 0.into() {
-                    if let Some(person) = column.person_slots[1].take() {
-                        column.person_slots[0] = Some(person);
-                    }
+                // if we're supposed to shift, and if the target person was destroyed and behind
+                // another person, shift the other person back
+                if shift && was_destroyed && person_row_index == 0.into() {
+                    column.person_slots[0] = column.person_slots[1].take();
                 }
             }
             Err(()) => {
@@ -168,6 +177,37 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                         Player::Player1 => GameResult::P2Wins,
                         Player::Player2 => GameResult::P1Wins,
                     });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Damages or destroys zero or more cards at the given set of locations.
+    /// If `destroy` is true, the cards are always destroyed; otherwise, they are damaged.
+    ///
+    /// This function should always be used instead of calling `damage_card_at` multiple times,
+    /// because it correctly handles cases where one card being destroyed causes another card to
+    /// be shifted back.
+    ///
+    /// Assumes that all locations are unique.
+    /// Panics if there is no card at any of the locations.
+    fn damage_cards_at(
+        &mut self,
+        locations: impl IntoIterator<Item = CardLocation>,
+        destroy: bool,
+    ) -> Result<(), GameResult> {
+        // damage/destroy all the cards without shifting any cards
+        for loc in locations {
+            self.damage_card_at(loc, destroy, false)?;
+        }
+
+        // shift any cards back as necessary
+        for player_state in [&mut self.player1, &mut self.player2] {
+            for column in &mut player_state.columns {
+                if column.person_slots[0].is_none() {
+                    column.person_slots[0] = column.person_slots[1].take();
                 }
             }
         }
@@ -384,11 +424,10 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
     /// Has this player damage an unprotected opponent card.
     pub fn damage_enemy(&mut self) -> Result<(), GameResult> {
         // get all possible targets
-        let target_player = self.player.other();
         let target_locs = self
             .other_state()
             .unprotected_card_locs()
-            .map(|loc| loc.for_player(target_player))
+            .map(|loc| loc.for_player(self.player.other()))
             .collect_vec();
 
         // ask the player to damage one of them
@@ -398,11 +437,10 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
     /// Has this player damage any opponent card.
     pub fn damage_any_enemy(&mut self) -> Result<(), GameResult> {
         // get all possible targets
-        let target_player = self.player.other();
         let target_locs = self
             .other_state()
             .card_locs()
-            .map(|loc| loc.for_player(target_player))
+            .map(|loc| loc.for_player(self.player.other()))
             .collect_vec();
 
         // ask the player to damage one of them
@@ -413,16 +451,30 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
     /// Assumes that the opponent has at least one person.
     pub fn injure_enemy(&mut self) {
         // get all possible targets
-        let target_player = self.player.other();
         let target_locs = self
             .other_state()
             .unprotected_person_locs()
-            .map(|loc| loc.for_player(target_player))
+            .map(|loc| loc.for_player(self.player.other()))
             .collect_vec();
 
         // ask the player to injure one of them
         self.choose_and_damage_card(&target_locs)
             .expect("injure_enemy should not end the game");
+    }
+
+    /// Injures all unprotected opponent people.
+    pub fn injure_all_unprotected_enemies(&mut self) {
+        // get all possible targets
+        let target_locs = self
+            .other_state()
+            .unprotected_person_locs()
+            .map(|loc| loc.for_player(self.player.other()))
+            .collect_vec();
+
+        // injure all of them
+        self.game_state
+            .damage_cards_at(target_locs, false)
+            .expect("injure_all_unprotected_enemies should not end the game");
     }
 
     /// Has this player choose and then damage a card from a given list of locations.
@@ -431,7 +483,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
         let target_loc = self.my_controller.choose_card_to_damage(self, locs);
 
         // damage the card
-        self.game_state.damage_card_at(target_loc, false)
+        self.game_state.damage_card_at(target_loc, false, true)
     }
 
     /// Has this player destroy one of their own people.
@@ -455,7 +507,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
         let target_loc = self.my_controller.choose_card_to_destroy(self, locs);
 
         // destroy the card
-        self.game_state.damage_card_at(target_loc, true)
+        self.game_state.damage_card_at(target_loc, true, true)
     }
 
     /// Has this player restore one of their own damaged cards.

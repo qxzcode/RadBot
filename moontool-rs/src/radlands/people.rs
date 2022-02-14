@@ -35,17 +35,30 @@ pub fn get_person_types() -> Vec<PersonType> {
             num_in_deck: 2,
             junk_effect: IconEffect::Draw,
             cost: 1,
-            abilities: vec![
-                ability! {
-                    description => "Destroy one of your people, then damage";
-                    cost => 0;
-                    can_perform => true;
-                    perform(game_view) => {
-                        game_view.destroy_own_person();
-                        IconEffect::Damage.perform(game_view)
-                    };
-                },
-            ],
+            abilities: vec![ability! {
+                description => "Destroy one of your people, then damage";
+                cost => 0;
+                can_perform => true;
+                perform(game_view) => {
+                    game_view.destroy_own_person();
+                    IconEffect::Damage.perform(game_view)
+                };
+            }],
+        },
+        PersonType {
+            name: "Gunner",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Restore,
+            cost: 1,
+            abilities: vec![ability! {
+                description => "Injure all unprotected enemies";
+                cost => 2;
+                can_perform(game_view) => IconEffect::Injure.can_perform(game_view);
+                perform(game_view) => {
+                    game_view.injure_all_unprotected_enemies();
+                    Ok(())
+                };
+            }],
         },
         PersonType {
             name: "Rabble Rouser",
@@ -67,32 +80,26 @@ pub fn get_person_types() -> Vec<PersonType> {
             num_in_deck: 2,
             junk_effect: IconEffect::Restore,
             cost: 1,
-            abilities: vec![
-                ability! {
-                    description => "Damage any (opponent) card";
-                    cost => 2;
-                    can_perform => true;
-                    perform(game_view) => game_view.damage_any_enemy();
-                },
-            ],
+            abilities: vec![ability! {
+                description => "Damage any (opponent) card";
+                cost => 2;
+                can_perform => true;
+                perform(game_view) => game_view.damage_any_enemy();
+            }],
         },
         PersonType {
             name: "Vigilante",
             num_in_deck: 2,
             junk_effect: IconEffect::Injure,
             cost: 1,
-            abilities: vec![
-                icon_ability(1, IconEffect::Injure),
-            ],
+            abilities: vec![icon_ability(1, IconEffect::Injure)],
         },
         PersonType {
             name: "Scout",
             num_in_deck: 2,
             junk_effect: IconEffect::Water,
             cost: 1,
-            abilities: vec![
-                icon_ability(1, IconEffect::Raid),
-            ],
+            abilities: vec![icon_ability(1, IconEffect::Raid)],
         },
     ]
 }
