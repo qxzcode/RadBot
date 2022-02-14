@@ -67,8 +67,10 @@ macro_rules! ability {
         can_perform($game_view_1:ident) => $can_perform:expr;
         perform($game_view_2:ident) => $perform:expr;
     } => {{
+        use crate::radlands::{GameView, GameResult};
+        use std::result::Result;
         struct MacroAbility;
-        impl Ability for MacroAbility {
+        impl crate::abilities::Ability for MacroAbility {
             fn description(&self) -> String {
                 $description.to_string()
             }
@@ -91,7 +93,7 @@ macro_rules! ability {
                 $perform
             }
         }
-        Box::new(MacroAbility)
+        std::boxed::Box::new(MacroAbility)
     }};
 
     {

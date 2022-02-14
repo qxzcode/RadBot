@@ -1,6 +1,6 @@
 use super::abilities::*;
 use super::styles::*;
-use super::{GameResult, GameView, IconEffect};
+use super::IconEffect;
 
 /// A type of person card.
 pub struct PersonType {
