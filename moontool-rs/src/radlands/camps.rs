@@ -61,7 +61,15 @@ pub fn get_camp_types() -> Vec<CampType> {
             name: "Cannon",
             num_initial_cards: 1,
             // ability: damage this card, then damage (costs 1 water)
-            abilities: vec![], // TODO
+            abilities: vec![ability! {
+                description => "Damage this card, then damage";
+                cost => 1;
+                can_perform => true;
+                perform(game_view, card_loc) => {
+                    game_view.game_state.damage_card_at(card_loc, false, false)?;
+                    IconEffect::Damage.perform(game_view)
+                };
+            }],
         },
         CampType {
             name: "Garage",

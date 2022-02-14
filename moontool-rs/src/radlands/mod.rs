@@ -707,7 +707,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                     .set_not_ready();
 
                 // perform the ability
-                ability.perform(game_view)?;
+                ability.perform(game_view, location.for_player(game_view.player))?;
 
                 Ok(false)
             }
@@ -720,7 +720,10 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                 camp.set_ready(false);
 
                 // perform the ability
-                ability.perform(game_view)?;
+                ability.perform(
+                    game_view,
+                    CardLocation::new(column_index, CardRowIndex::camp(), game_view.player),
+                )?;
 
                 Ok(false)
             }

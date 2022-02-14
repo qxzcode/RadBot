@@ -1,3 +1,4 @@
+use super::locations::CardLocation;
 use super::{GameResult, GameView, IconEffect};
 
 /// An ability on a camp or person.
@@ -16,6 +17,7 @@ pub trait Ability {
     fn perform<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v mut GameView<'g, 'ctype>,
+        card_loc: CardLocation,
     ) -> Result<(), GameResult>;
 
     /// Returns whether this ability can be afforded and used given the game state.
@@ -49,6 +51,7 @@ impl Ability for IconAbility {
     fn perform<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v mut GameView<'g, 'ctype>,
+        _card_loc: CardLocation,
     ) -> Result<(), GameResult> {
         self.effect.perform(game_view)
     }
@@ -65,12 +68,14 @@ macro_rules! ability {
         description => $description:literal;
         cost => $cost:expr;
         can_perform($game_view_1:ident) => $can_perform:expr;
-        perform($game_view_2:ident) => $perform:expr;
+        perform($game_view_2:ident, $card_loc:ident) => $perform:expr;
     } => {{
-        use crate::radlands::{GameView, GameResult};
+        use $crate::radlands::{GameView, GameResult};
+        use $crate::radlands::locations::CardLocation;
+        use std::string::String;
         use std::result::Result;
         struct MacroAbility;
-        impl crate::abilities::Ability for MacroAbility {
+        impl $crate::abilities::Ability for MacroAbility {
             fn description(&self) -> String {
                 $description.to_string()
             }
@@ -89,6 +94,7 @@ macro_rules! ability {
             fn perform<'v, 'g: 'v, 'ctype: 'g>(
                 &self,
                 $game_view_2: &'v mut GameView<'g, 'ctype>,
+                $card_loc: CardLocation,
             ) -> Result<(), GameResult> {
                 $perform
             }
@@ -96,6 +102,37 @@ macro_rules! ability {
         std::boxed::Box::new(MacroAbility)
     }};
 
+    // version where can_perform is always true
+    {
+        description => $description:literal;
+        cost => $cost:expr;
+        can_perform => true;
+        perform($game_view_2:ident, $card_loc:ident) => $perform:expr;
+    } => {
+        ability! {
+            description => $description;
+            cost => $cost;
+            can_perform(_game_view) => true;
+            perform($game_view_2, $card_loc) => $perform;
+        }
+    };
+
+    // version without card_loc parameter for perform(...)
+    {
+        description => $description:literal;
+        cost => $cost:expr;
+        can_perform($game_view_1:ident) => $can_perform:expr;
+        perform($game_view_2:ident) => $perform:expr;
+    } => {
+        ability! {
+            description => $description;
+            cost => $cost;
+            can_perform($game_view_1) => $can_perform;
+            perform($game_view_2, _card_loc) => $perform;
+        }
+    };
+
+    // version without card_loc that performs an IconEffect
     {
         description => $description:literal;
         cost => $cost:expr;
@@ -110,6 +147,7 @@ macro_rules! ability {
         }
     };
 
+    // version without card_loc where can_perform is always true
     {
         description => $description:literal;
         cost => $cost:expr;
