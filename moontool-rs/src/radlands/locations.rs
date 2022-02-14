@@ -90,6 +90,11 @@ impl PlayLocation {
     pub fn row(&self) -> PersonRowIndex {
         self.row
     }
+
+    /// Converts the location to a location on the specified player's board.
+    pub fn for_player(&self, player: Player) -> CardLocation {
+        CardLocation::new(self.column, self.row.into(), player)
+    }
 }
 
 /// Enum for specifying a particular player.
@@ -203,5 +208,11 @@ impl PlayerCardLocation {
     /// Converts the location to a location on the specified player's board.
     pub fn for_player(&self, player: Player) -> CardLocation {
         CardLocation::new(self.column, self.row, player)
+    }
+}
+
+impl From<PlayLocation> for PlayerCardLocation {
+    fn from(play_location: PlayLocation) -> Self {
+        PlayerCardLocation::new(play_location.column, play_location.row.into())
     }
 }

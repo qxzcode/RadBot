@@ -25,6 +25,12 @@ pub trait PlayerController {
         target_locs: &[CardLocation],
     ) -> CardLocation;
 
+    fn choose_card_to_destroy<'v, 'g: 'v, 'ctype: 'g>(
+        &self,
+        game_view: &'v GameView<'g, 'ctype>,
+        target_locs: &[CardLocation],
+    ) -> CardLocation;
+
     fn choose_card_to_restore<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,

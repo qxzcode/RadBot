@@ -144,6 +144,11 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         self.columns.iter().flat_map(|col| col.people())
     }
 
+    /// Returns an iterator over the locations of this player's people.
+    pub fn person_locs(&self) -> impl Iterator<Item = PlayLocation> + '_ {
+        self.enumerate_people().map(|(loc, _)| loc)
+    }
+
     /// Returns an iterator over the locations of this player's cards (people
     /// and non-destroyed camps).
     pub fn card_locs(&self) -> impl Iterator<Item = PlayerCardLocation> + '_ {

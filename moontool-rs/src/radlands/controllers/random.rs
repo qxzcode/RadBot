@@ -46,6 +46,19 @@ impl PlayerController for RandomController {
         *chosen_target
     }
 
+    fn choose_card_to_destroy<'v, 'g: 'v, 'ctype: 'g>(
+        &self,
+        _game_view: &'v GameView<'g, 'ctype>,
+        target_locs: &[CardLocation],
+    ) -> CardLocation {
+        let mut rng = thread_rng();
+        let chosen_target = target_locs
+            .choose(&mut rng)
+            .expect("choose_card_to_destroy called with empty target_locs list");
+        println!("{BOLD}RandomController chose destroy target:{RESET} {chosen_target:?}");
+        *chosen_target
+    }
+
     fn choose_card_to_restore<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         _game_view: &'v GameView<'g, 'ctype>,

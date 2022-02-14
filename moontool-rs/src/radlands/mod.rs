@@ -109,9 +109,10 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         cur_view.do_turn(is_first_turn)
     }
 
-    /// Damages the card at the given location.
+    /// Damages or destroys the card at the given location. If `destroy` is true,
+    /// the card is always destroyed; otherwise, it is damaged.
     /// Panics if there is no card there.
-    fn damage_card_at(&mut self, loc: CardLocation) -> Result<(), GameResult> {
+    fn damage_card_at(&mut self, loc: CardLocation, destroy: bool) -> Result<(), GameResult> {
         let player_state = match loc.player() {
             Player::Player1 => &mut self.player1,
             Player::Player2 => &mut self.player2,
@@ -122,7 +123,9 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                 // damage the person
                 let column = &mut player_state.columns[loc.column().as_usize()];
                 let slot = &mut column.person_slots[person_row_index.as_usize()];
-                let person = slot.as_mut().expect("Tried to damage an empty person slot");
+                let person = slot
+                    .as_mut()
+                    .expect("Tried to damage or destroy an empty person slot");
                 let was_destroyed = match person {
                     Person::Punk(Punk { card_type, .. }) => {
                         // return the card to the top of the deck
@@ -136,8 +139,8 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                         person_type,
                         status,
                     }) => {
-                        if *status == NonPunkStatus::Injured {
-                            // the person was already injured, so now it's dead;
+                        if destroy || *status == NonPunkStatus::Injured {
+                            // the person was killed/destroyed;
                             // discard the card and empty the slot
                             self.discard.push(PersonOrEventType::Person(*person_type));
                             *slot = None;
@@ -428,7 +431,31 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
         let target_loc = self.my_controller.choose_card_to_damage(self, locs);
 
         // damage the card
-        self.game_state.damage_card_at(target_loc)
+        self.game_state.damage_card_at(target_loc, false)
+    }
+
+    /// Has this player destroy one of their own people.
+    /// Assumes that the player has at least one person.
+    pub fn destroy_own_person(&mut self) {
+        // get all possible targets
+        let target_locs = self
+            .my_state()
+            .person_locs()
+            .map(|loc| loc.for_player(self.player))
+            .collect_vec();
+
+        // ask the player to destroy one of them
+        self.choose_and_destroy_card(&target_locs)
+            .expect("destroy_own_person should not end the game");
+    }
+
+    /// Has this player choose and then destroy a card from a given list of locations.
+    pub fn choose_and_destroy_card(&mut self, locs: &[CardLocation]) -> Result<(), GameResult> {
+        // ask the player which one to destroy
+        let target_loc = self.my_controller.choose_card_to_destroy(self, locs);
+
+        // destroy the card
+        self.game_state.damage_card_at(target_loc, true)
     }
 
     /// Has this player restore one of their own damaged cards.

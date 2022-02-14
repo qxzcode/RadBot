@@ -31,16 +31,31 @@ impl StyledName for PersonType {
 pub fn get_person_types() -> Vec<PersonType> {
     vec![
         PersonType {
+            name: "Cult Leader",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Draw,
+            cost: 1,
+            abilities: vec![
+                ability! {
+                    description => "Destroy one of your people, then damage";
+                    cost => 0;
+                    can_perform => true;
+                    perform(game_view) => {
+                        game_view.destroy_own_person();
+                        IconEffect::Damage.perform(game_view)
+                    };
+                },
+            ],
+        },
+        PersonType {
             name: "Rabble Rouser",
             num_in_deck: 2,
             junk_effect: IconEffect::Raid,
             cost: 1,
             abilities: vec![
-                // punk (costs 1 water):
                 icon_ability(1, IconEffect::GainPunk),
-                // if you have a punk, damage (costs 1 water):
                 ability! {
-                    description => "Damage";
+                    description => "(If you have a punk) Damage";
                     cost => 1;
                     can_perform(game_view) => game_view.my_state().has_punk();
                     perform => IconEffect::Damage;
@@ -53,7 +68,6 @@ pub fn get_person_types() -> Vec<PersonType> {
             junk_effect: IconEffect::Restore,
             cost: 1,
             abilities: vec![
-                // damage any (opponent) card (costs 2 water):
                 ability! {
                     description => "Damage any (opponent) card";
                     cost => 2;
@@ -68,7 +82,6 @@ pub fn get_person_types() -> Vec<PersonType> {
             junk_effect: IconEffect::Injure,
             cost: 1,
             abilities: vec![
-                // injure (costs 1 water):
                 icon_ability(1, IconEffect::Injure),
             ],
         },
@@ -78,7 +91,6 @@ pub fn get_person_types() -> Vec<PersonType> {
             junk_effect: IconEffect::Water,
             cost: 1,
             abilities: vec![
-                // raid (costs 1 water):
                 icon_ability(1, IconEffect::Raid),
             ],
         },
