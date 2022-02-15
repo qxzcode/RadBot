@@ -120,6 +120,17 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
             .any(|slot| slot.is_none())
     }
 
+    /// Returns whether this player has an empty person slot in a column where
+    /// `column.camp.is_destroyed() == camp_destroyed`. This is used to determine
+    /// valid locations to play the person "Holdout" for different costs.
+    pub fn has_empty_holdout_slot(&self, camp_destroyed: bool) -> bool {
+        self.columns
+            .iter()
+            .filter(|col| col.camp.is_destroyed() == camp_destroyed)
+            .flat_map(|col| &col.person_slots)
+            .any(|slot| slot.is_none())
+    }
+
     /// Returns whether this player has a punk on their board.
     pub fn has_punk(&self) -> bool {
         self.people()
@@ -214,20 +225,35 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         // actions to play or junk a card
         let can_play_person = self.has_empty_person_slot();
         for card_type in self.hand.iter_unique() {
-            if game_view.game_state.cur_player_water >= card_type.cost() {
-                match card_type {
-                    PersonOrEventType::Person(person_type) => {
-                        if can_play_person {
-                            actions.push(Action::PlayPerson(person_type));
-                        }
+            let can_afford = game_view.game_state.cur_player_water >= card_type.cost();
+            match card_type {
+                PersonOrEventType::Person(person_type) if person_type.is_holdout => {
+                    // PlayPerson/PlayHoldout actions for "Holdout"
+                    if can_afford && self.has_empty_holdout_slot(false) {
+                        // there's an empty slot in a column with a non-destroyed camp
+                        // (and the player can afford Holdout's normal cost)
+                        actions.push(Action::PlayPerson(person_type));
                     }
-                    PersonOrEventType::Event(event_type) => {
-                        if self.can_play_event(event_type.resolve_turns()) {
-                            actions.push(Action::PlayEvent(event_type));
-                        }
+                    if self.has_empty_holdout_slot(true) {
+                        // there's an empty slot in a column with a destroyed camp
+                        actions.push(Action::PlayHoldout(person_type));
+                    }
+                }
+                PersonOrEventType::Person(person_type) => {
+                    // PlayPerson actions for all other people
+                    if can_afford && can_play_person {
+                        actions.push(Action::PlayPerson(person_type));
+                    }
+                }
+                PersonOrEventType::Event(event_type) => {
+                    // PlayEvent actions
+                    if can_afford && self.can_play_event(event_type.resolve_turns()) {
+                        actions.push(Action::PlayEvent(event_type));
                     }
                 }
             }
+
+            // JunkCard actions
             if card_type.junk_effect().can_perform(game_view) {
                 actions.push(Action::JunkCard(card_type));
             }
@@ -495,6 +521,7 @@ pub struct Camp<'ctype> {
 
 impl Camp<'_> {
     /// Damages the camp.
+    /// Does not check for win conditions; that must be done separately.
     /// Panics if the camp is already destroyed.
     pub fn damage(&mut self) {
         match self.status {

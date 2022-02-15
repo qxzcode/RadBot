@@ -18,7 +18,10 @@ pub struct PersonType {
 
     /// The person's abilities.
     pub abilities: Vec<Box<dyn Ability>>,
-    // TODO: traits
+
+    /// Whether this is the Holdout card, which can be played for free in a
+    /// column whose camp is destroyed.
+    pub is_holdout: bool,
 }
 
 impl StyledName for PersonType {
@@ -28,14 +31,34 @@ impl StyledName for PersonType {
     }
 }
 
+/// Convenience macro to allow omitting certain fields with common defaults.
+macro_rules! person_type {
+    {
+        name: $name:literal,
+        num_in_deck: $num_in_deck:literal,
+        junk_effect: $junk_effect:expr,
+        cost: $cost:literal,
+        abilities: [$($ability:expr),* $(,)?],
+    } => {
+        PersonType {
+            name: $name,
+            num_in_deck: $num_in_deck,
+            junk_effect: $junk_effect,
+            cost: $cost,
+            abilities: vec![$($ability),*],
+            is_holdout: false,
+        }
+    };
+}
+
 pub fn get_person_types() -> Vec<PersonType> {
     vec![
-        PersonType {
+        person_type! {
             name: "Cult Leader",
             num_in_deck: 2,
             junk_effect: IconEffect::Draw,
             cost: 1,
-            abilities: vec![ability! {
+            abilities: [ability! {
                 description => "Destroy one of your people, then damage";
                 cost => 0;
                 can_perform => true;
@@ -45,12 +68,12 @@ pub fn get_person_types() -> Vec<PersonType> {
                 };
             }],
         },
-        PersonType {
+        person_type! {
             name: "Gunner",
             num_in_deck: 2,
             junk_effect: IconEffect::Restore,
             cost: 1,
-            abilities: vec![ability! {
+            abilities: [ability! {
                 description => "Injure all unprotected enemies";
                 cost => 2;
                 can_perform(game_view) => IconEffect::Injure.can_perform(game_view);
@@ -61,11 +84,19 @@ pub fn get_person_types() -> Vec<PersonType> {
             }],
         },
         PersonType {
+            name: "Holdout",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Raid,
+            cost: 2,
+            abilities: vec![icon_ability(1, IconEffect::Damage)],
+            is_holdout: true, // costs 0 to play in the column of a destroyed camp
+        },
+        person_type! {
             name: "Rabble Rouser",
             num_in_deck: 2,
             junk_effect: IconEffect::Raid,
             cost: 1,
-            abilities: vec![
+            abilities: [
                 icon_ability(1, IconEffect::GainPunk),
                 ability! {
                     description => "(If you have a punk) Damage";
@@ -75,31 +106,31 @@ pub fn get_person_types() -> Vec<PersonType> {
                 },
             ],
         },
-        PersonType {
+        person_type! {
             name: "Sniper",
             num_in_deck: 2,
             junk_effect: IconEffect::Restore,
             cost: 1,
-            abilities: vec![ability! {
+            abilities: [ability! {
                 description => "Damage any (opponent) card";
                 cost => 2;
                 can_perform => true;
                 perform(game_view) => game_view.damage_any_enemy();
             }],
         },
-        PersonType {
+        person_type! {
             name: "Vigilante",
             num_in_deck: 2,
             junk_effect: IconEffect::Injure,
             cost: 1,
-            abilities: vec![icon_ability(1, IconEffect::Injure)],
+            abilities: [icon_ability(1, IconEffect::Injure)],
         },
-        PersonType {
+        person_type! {
             name: "Scout",
             num_in_deck: 2,
             junk_effect: IconEffect::Water,
             cost: 1,
-            abilities: vec![icon_ability(1, IconEffect::Raid)],
+            abilities: [icon_ability(1, IconEffect::Raid)],
         },
     ]
 }

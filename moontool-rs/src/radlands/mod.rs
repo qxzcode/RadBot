@@ -577,17 +577,25 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
     pub fn gain_punk(&mut self) -> Result<(), GameResult> {
         if self.my_state().has_empty_person_slot() {
             let punk = Person::new_punk(self.game_state.draw_card()?);
-            self.play_person(punk);
+            self.play_person(punk, None);
         }
         Ok(())
     }
 
     /// Asks this player's controller to choose a location, then plays the given person
     /// onto that location.
-    fn play_person(&'v mut self, person: Person<'ctype>) {
+    /// If `camp_destroyed` is `Some`, then the possible play locations are restricted to
+    /// columns where `column.camp.is_destroyed() == camp_destroyed`.
+    /// Assumes that there is at least one valid play location.
+    fn play_person(&'v mut self, person: Person<'ctype>, camp_destroyed: Option<bool>) {
         // determine possible locations to place the card
         let mut play_locs = Vec::new();
         for (col_index, col) in self.my_state().enumerate_columns() {
+            if matches!(camp_destroyed, Some(destroyed) if col.camp.is_destroyed() != destroyed) {
+                // this column doesn't match the `camp_destroyed` requirement; skip it
+                continue;
+            }
+
             match col.people().count() {
                 0 => {
                     // no people in this column, so only one possible play location
@@ -614,7 +622,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
         let row_index = play_loc.row().as_usize();
         let col = &mut self.my_state_mut().columns[col_index];
         if let Some(old_person) = col.person_slots[row_index].replace(person) {
-            // if there was a person in the slot, move it to the other slot
+            // if there was a person already in the slot, move the old person to the other slot
             let other_row_index = 1 - row_index;
             let replaced_slot = col.person_slots[other_row_index].replace(old_person);
             assert!(replaced_slot.is_none());
@@ -627,7 +635,12 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
 /// An action that can be performed by a player during their turn.
 pub enum Action<'ctype> {
     /// Play a person card from the hand onto the board.
+    /// If the card is "Holdout", then this action only allows playing into a column
+    /// whose camp is not destroyed.
     PlayPerson(&'ctype PersonType),
+
+    /// Play a "Holdout" person into a column with a destroyed camp, for free.
+    PlayHoldout(&'ctype PersonType),
 
     /// Play an event card from the hand onto the event queue.
     PlayEvent(&'ctype dyn EventType),
@@ -662,7 +675,28 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                     .remove_one(PersonOrEventType::Person(person_type));
 
                 // play the person onto the board
-                game_view.play_person(Person::new_non_punk(person_type));
+                let destroyed_restriction = if person_type.is_holdout {
+                    // Only allow a `PlayPerson` action to play Holdout into columns with
+                    // non-destroyed camps. Playing it for free into a column with a
+                    // destroyed camp is handled by the `PlayHoldout` action variant.
+                    Some(false)
+                } else {
+                    // No such restriction for other people.
+                    None
+                };
+                game_view.play_person(Person::new_non_punk(person_type), destroyed_restriction);
+
+                Ok(false)
+            }
+            Action::PlayHoldout(person_type) => {
+                // remove the person from the player's hand
+                game_view
+                    .my_state_mut()
+                    .hand
+                    .remove_one(PersonOrEventType::Person(person_type));
+
+                // play the person into a column with a destroyed camp
+                game_view.play_person(Person::new_non_punk(person_type), Some(true));
 
                 Ok(false)
             }
@@ -740,9 +774,18 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
     pub fn format(&self, game_view: &'v GameView<'g, 'ctype>) -> String {
         match *self {
             Action::PlayPerson(card) => format!(
-                "Play {} (costs {WATER}{} water{RESET})",
+                "Play {}{} (costs {WATER}{} water{RESET})",
                 card.styled_name(),
+                if card.is_holdout {
+                    " in column without destroyed camp"
+                } else {
+                    ""
+                },
                 card.cost
+            ),
+            Action::PlayHoldout(card) => format!(
+                "Play {} in column with destroyed camp (costs {WATER}0 water{RESET})",
+                card.styled_name(),
             ),
             Action::PlayEvent(card) => format!(
                 "Play {} (costs {WATER}{} water{RESET})",
