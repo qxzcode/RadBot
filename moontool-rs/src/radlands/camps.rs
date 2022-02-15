@@ -53,7 +53,8 @@ pub fn get_camp_types() -> Vec<CampType> {
                         .collect_vec();
                     game_view
                         .other_view_mut()
-                        .choose_and_damage_card(&target_locs)
+                        .choose_and_damage_card(&target_locs)?;
+                    Ok(())
                 };
             }],
         },

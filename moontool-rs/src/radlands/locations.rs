@@ -40,6 +40,10 @@ impl CardRowIndex {
             Err(())
         }
     }
+
+    pub fn is_camp(self) -> bool {
+        self.0 == 0
+    }
 }
 
 impl From<PersonRowIndex> for CardRowIndex {

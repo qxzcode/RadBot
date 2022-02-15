@@ -422,7 +422,8 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
     }
 
     /// Has this player damage an unprotected opponent card.
-    pub fn damage_enemy(&mut self) -> Result<(), GameResult> {
+    /// Returns the location of the card that was damaged.
+    pub fn damage_enemy(&mut self) -> Result<CardLocation, GameResult> {
         // get all possible targets
         let target_locs = self
             .other_state()
@@ -444,7 +445,9 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
             .collect_vec();
 
         // ask the player to damage one of them
-        self.choose_and_damage_card(&target_locs)
+        self.choose_and_damage_card(&target_locs)?;
+
+        Ok(())
     }
 
     /// Has this player injure an unprotected opponent person.
@@ -478,12 +481,18 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
     }
 
     /// Has this player choose and then damage a card from a given list of locations.
-    pub fn choose_and_damage_card(&mut self, locs: &[CardLocation]) -> Result<(), GameResult> {
+    /// Returns the location of the card that was damaged.
+    pub fn choose_and_damage_card(
+        &mut self,
+        locs: &[CardLocation],
+    ) -> Result<CardLocation, GameResult> {
         // ask the player which one to damage
         let target_loc = self.my_controller.choose_card_to_damage(self, locs);
 
         // damage the card
-        self.game_state.damage_card_at(target_loc, false, true)
+        self.game_state.damage_card_at(target_loc, false, true)?;
+
+        Ok(target_loc)
     }
 
     /// Has this player destroy one of their own people.
@@ -980,7 +989,9 @@ impl EventType for RaidersEvent {
             .collect_vec();
         game_view
             .other_view_mut()
-            .choose_and_damage_card(&target_locs)
+            .choose_and_damage_card(&target_locs)?;
+
+        Ok(())
     }
 
     fn as_raiders(&self) -> Option<&RaidersEvent> {

@@ -149,6 +149,24 @@ pub fn get_person_types() -> Vec<PersonType> {
             ],
         },
         person_type! {
+            name: "Looter",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Water,
+            cost: 1,
+            abilities: [ability! {
+                description => "Damage; if this hits a camp, draw";
+                cost => 2;
+                can_perform => true;
+                perform(game_view) => {
+                    let damaged_loc = game_view.damage_enemy()?;
+                    if damaged_loc.row().is_camp() {
+                        game_view.draw_card_into_hand()?;
+                    }
+                    Ok(())
+                };
+            }],
+        },
+        person_type! {
             name: "Sniper",
             num_in_deck: 2,
             junk_effect: IconEffect::Restore,
