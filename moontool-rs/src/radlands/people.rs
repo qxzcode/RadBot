@@ -1,6 +1,10 @@
 use super::abilities::*;
+use super::locations::PlayLocation;
 use super::styles::*;
-use super::IconEffect;
+use super::{GameResult, GameView, IconEffect};
+
+/// Type alias for on_enter_play handler functions.
+type OnEnterPlayHandler = fn(&mut GameView, PlayLocation) -> Result<(), GameResult>;
 
 /// A type of person card.
 pub struct PersonType {
@@ -19,6 +23,9 @@ pub struct PersonType {
     /// The person's abilities.
     pub abilities: Vec<Box<dyn Ability>>,
 
+    /// The person's on-enter-play handler, if any.
+    pub on_enter_play: Option<OnEnterPlayHandler>,
+
     /// Whether this is the Holdout card, which can be played for free in a
     /// column whose camp is destroyed.
     pub is_holdout: bool,
@@ -33,6 +40,7 @@ impl StyledName for PersonType {
 
 /// Convenience macro to allow omitting certain fields with common defaults.
 macro_rules! person_type {
+    // basic person type with abilities
     {
         name: $name:literal,
         num_in_deck: $num_in_deck:literal,
@@ -46,6 +54,27 @@ macro_rules! person_type {
             junk_effect: $junk_effect,
             cost: $cost,
             abilities: vec![$($ability),*],
+            on_enter_play: None,
+            is_holdout: false,
+        }
+    };
+
+    // person type with an on_enter_play effect
+    {
+        name: $name:literal,
+        num_in_deck: $num_in_deck:literal,
+        junk_effect: $junk_effect:expr,
+        cost: $cost:literal,
+        abilities: [$($ability:expr),* $(,)?],
+        on_enter_play($game_view:ident, $play_loc:ident) => $on_enter_play:expr,
+    } => {
+        PersonType {
+            name: $name,
+            num_in_deck: $num_in_deck,
+            junk_effect: $junk_effect,
+            cost: $cost,
+            abilities: vec![$($ability),*],
+            on_enter_play: Some(|$game_view, $play_loc| $on_enter_play),
             is_holdout: false,
         }
     };
@@ -89,7 +118,20 @@ pub fn get_person_types() -> Vec<PersonType> {
             junk_effect: IconEffect::Raid,
             cost: 2,
             abilities: vec![icon_ability(1, IconEffect::Damage)],
+            on_enter_play: None,
             is_holdout: true, // costs 0 to play in the column of a destroyed camp
+        },
+        person_type! {
+            name: "Repair Bot",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Injure,
+            cost: 1,
+            abilities: [icon_ability(2, IconEffect::Restore)],
+            on_enter_play(game_view, _play_loc) => {
+                // when this card enters play, restore
+                game_view.restore_card();
+                Ok(())
+            },
         },
         person_type! {
             name: "Rabble Rouser",

@@ -510,11 +510,14 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
         self.game_state.damage_card_at(target_loc, true, true)
     }
 
-    /// Has this player restore one of their own damaged cards.
-    /// Assumes that the player has at least one restorable card.
+    /// Has this player restore one of their own damaged cards,
+    /// or does nothing if the player does not have at least one restorable card.
     pub fn restore_card(&mut self) {
         // get all possible targets
         let target_locs = self.my_state().restorable_card_locs().collect_vec();
+        if target_locs.is_empty() {
+            return;
+        }
 
         // ask the player which one to restore
         let target_loc = self
@@ -577,7 +580,8 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
     pub fn gain_punk(&mut self) -> Result<(), GameResult> {
         if self.my_state().has_empty_person_slot() {
             let punk = Person::new_punk(self.game_state.draw_card()?);
-            self.play_person(punk, None);
+            self.play_person(punk, None)
+                .expect("Playing a punk should not end the game");
         }
         Ok(())
     }
@@ -587,7 +591,11 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
     /// If `camp_destroyed` is `Some`, then the possible play locations are restricted to
     /// columns where `column.camp.is_destroyed() == camp_destroyed`.
     /// Assumes that there is at least one valid play location.
-    fn play_person(&'v mut self, person: Person<'ctype>, camp_destroyed: Option<bool>) {
+    fn play_person(
+        &'v mut self,
+        person: Person<'ctype>,
+        camp_destroyed: Option<bool>,
+    ) -> Result<(), GameResult> {
         // determine possible locations to place the card
         let mut play_locs = Vec::new();
         for (col_index, col) in self.my_state().enumerate_columns() {
@@ -624,11 +632,18 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
         if let Some(old_person) = col.person_slots[row_index].replace(person) {
             // if there was a person already in the slot, move the old person to the other slot
             let other_row_index = 1 - row_index;
-            let replaced_slot = col.person_slots[other_row_index].replace(old_person);
-            assert!(replaced_slot.is_none());
+            let other_slot_old = col.person_slots[other_row_index].replace(old_person);
+            assert!(other_slot_old.is_none()); // ensure that the other slot was empty
         }
 
-        // TODO: activate any on-play effect of the person
+        // finally, activate any "when this card enters play" effect of the person
+        if let Person::NonPunk { person_type, .. } = col.person_slots[row_index].as_ref().unwrap() {
+            if let Some(on_enter_play) = person_type.on_enter_play {
+                on_enter_play(self, play_loc)?;
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -684,7 +699,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                     // No such restriction for other people.
                     None
                 };
-                game_view.play_person(Person::new_non_punk(person_type), destroyed_restriction);
+                game_view.play_person(Person::new_non_punk(person_type), destroyed_restriction)?;
 
                 Ok(false)
             }
@@ -696,7 +711,9 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                     .remove_one(PersonOrEventType::Person(person_type));
 
                 // play the person into a column with a destroyed camp
-                game_view.play_person(Person::new_non_punk(person_type), Some(true));
+                game_view
+                    .play_person(Person::new_non_punk(person_type), Some(true))
+                    .expect("Playing Holdout should not end the game");
 
                 Ok(false)
             }
