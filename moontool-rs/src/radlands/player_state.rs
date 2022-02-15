@@ -123,7 +123,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
     /// Returns whether this player has a punk on their board.
     pub fn has_punk(&self) -> bool {
         self.people()
-            .any(|person| matches!(person, Person::Punk(_)))
+            .any(|person| matches!(person, Person::Punk { .. }))
     }
 
     /// Returns whether this player has any damaged cards that they can restore.
@@ -242,17 +242,17 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         // actions to use a person's ability
         for (loc, person) in self.enumerate_people() {
             match person {
-                Person::Punk(Punk { is_ready, .. }) => {
+                Person::Punk { is_ready, .. } => {
                     // punks don't have abilities
                     // TODO: unless they're given one by another card
                     if *is_ready {
                         // actions.push(Action::UseAbility(...));
                     }
                 }
-                Person::NonPunk(NonPunk {
+                Person::NonPunk {
                     person_type,
                     status,
-                }) => {
+                } => {
                     if *status == NonPunkStatus::Ready {
                         for ability in &person_type.abilities {
                             if ability.can_afford_and_perform(game_view) {
@@ -563,23 +563,20 @@ pub enum CampStatus {
 
 /// A person played on the board (a punk or face-up person).
 pub enum Person<'ctype> {
-    Punk(Punk<'ctype>),
-    NonPunk(NonPunk<'ctype>),
-}
+    Punk {
+        /// The identity of the face-down card.
+        card_type: PersonOrEventType<'ctype>,
 
-/// A punk played on the board.
-pub struct Punk<'ctype> {
-    /// The identity of the face-down card.
-    pub card_type: PersonOrEventType<'ctype>,
+        /// Whether the punk is ready.
+        is_ready: bool,
+    },
+    NonPunk {
+        /// The identity of the person card.
+        person_type: &'ctype PersonType,
 
-    /// Whether the punk is ready.
-    pub is_ready: bool,
-}
-
-/// A non-punk (face-up) person played on the board.
-pub struct NonPunk<'ctype> {
-    pub person_type: &'ctype PersonType,
-    pub status: NonPunkStatus,
+        /// The damage/readiness status of the person.
+        status: NonPunkStatus,
+    },
 }
 
 /// Enum representing the damage/readiness of a non-punk person.
@@ -596,36 +593,36 @@ pub enum NonPunkStatus {
 impl<'ctype> Person<'ctype> {
     /// Creates a non-ready punk from a card type.
     pub(super) fn new_punk(card_type: PersonOrEventType<'ctype>) -> Self {
-        Person::Punk(Punk {
+        Person::Punk {
             card_type,
             is_ready: false,
-        })
+        }
     }
 
     /// Creates an ununjured but non-ready person from a person type.
     pub(super) fn new_non_punk(person_type: &'ctype PersonType) -> Self {
-        Person::NonPunk(NonPunk {
+        Person::NonPunk {
             person_type,
             status: NonPunkStatus::NotReady,
-        })
+        }
     }
 
     /// Returns whether this person is injured and can be restored.
     pub fn is_restorable(&self) -> bool {
-        matches!(self, Person::NonPunk(NonPunk { status, .. }) if *status == NonPunkStatus::Injured)
+        matches!(self, Person::NonPunk { status, .. } if *status == NonPunkStatus::Injured)
     }
 
     /// Restores this person.
     /// Panics if the person is not injured.
     pub fn restore(&mut self) {
         match self {
-            Person::Punk(_) => panic!("Tried to restore a punk"),
-            Person::NonPunk(non_punk) => {
+            Person::Punk { .. } => panic!("Tried to restore a punk"),
+            Person::NonPunk { status, .. } => {
                 assert!(
-                    non_punk.status == NonPunkStatus::Injured,
+                    *status == NonPunkStatus::Injured,
                     "Tried to restore an undamaged person"
                 );
-                non_punk.status = NonPunkStatus::NotReady;
+                *status = NonPunkStatus::NotReady;
             }
         }
     }
@@ -633,12 +630,12 @@ impl<'ctype> Person<'ctype> {
     /// Sets this person to be ready. Has no effect if the person is injured or already ready.
     pub fn set_ready(&mut self) {
         match self {
-            Person::Punk(punk) => {
-                punk.is_ready = true;
+            Person::Punk { is_ready, .. } => {
+                *is_ready = true;
             }
-            Person::NonPunk(non_punk) => {
-                if non_punk.status == NonPunkStatus::NotReady {
-                    non_punk.status = NonPunkStatus::Ready;
+            Person::NonPunk { status, .. } => {
+                if *status == NonPunkStatus::NotReady {
+                    *status = NonPunkStatus::Ready;
                 }
             }
         }
@@ -648,12 +645,12 @@ impl<'ctype> Person<'ctype> {
     /// ready.
     pub fn set_not_ready(&mut self) {
         match self {
-            Person::Punk(punk) => {
-                punk.is_ready = false;
+            Person::Punk { is_ready, .. } => {
+                *is_ready = false;
             }
-            Person::NonPunk(non_punk) => {
-                if non_punk.status == NonPunkStatus::Ready {
-                    non_punk.status = NonPunkStatus::NotReady;
+            Person::NonPunk { status, .. } => {
+                if *status == NonPunkStatus::Ready {
+                    *status = NonPunkStatus::NotReady;
                 }
             }
         }
@@ -664,11 +661,11 @@ impl StyledName for Person<'_> {
     /// Returns the name of the person, styled for display.
     fn styled_name(&self) -> StyledString {
         match self {
-            Person::Punk(_) => StyledString::new("Punk", PUNK),
-            Person::NonPunk(NonPunk {
+            Person::Punk { .. } => StyledString::new("Punk", PUNK),
+            Person::NonPunk {
                 person_type,
                 status,
-            }) => StyledString::new(
+            } => StyledString::new(
                 person_type.name,
                 match status {
                     NonPunkStatus::Ready => PERSON_READY,

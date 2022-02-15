@@ -137,7 +137,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                     .as_mut()
                     .expect("Tried to damage or destroy an empty person slot");
                 let was_destroyed = match person {
-                    Person::Punk(Punk { card_type, .. }) => {
+                    Person::Punk { card_type, .. } => {
                         // return the card to the top of the deck
                         self.deck.push(*card_type);
 
@@ -145,10 +145,10 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                         *slot = None;
                         true
                     }
-                    Person::NonPunk(NonPunk {
+                    Person::NonPunk {
                         person_type,
                         status,
-                    }) => {
+                    } => {
                         if destroy || *status == NonPunkStatus::Injured {
                             // the person was killed/destroyed;
                             // discard the card and empty the slot
