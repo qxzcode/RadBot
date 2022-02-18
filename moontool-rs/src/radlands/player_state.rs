@@ -1,5 +1,6 @@
 use crate::cards::Cards;
 
+use super::people::SpecialType;
 use super::*;
 
 /// Represents the state of a player's board and hand.
@@ -227,7 +228,9 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         for card_type in self.hand.iter_unique() {
             let can_afford = game_view.game_state.cur_player_water >= card_type.cost();
             match card_type {
-                PersonOrEventType::Person(person_type) if person_type.is_holdout => {
+                PersonOrEventType::Person(person_type)
+                    if person_type.special_type == SpecialType::Holdout =>
+                {
                     // PlayPerson/PlayHoldout actions for "Holdout"
                     if can_afford && self.has_empty_holdout_slot(false) {
                         // there's an empty slot in a column with a non-destroyed camp
@@ -266,6 +269,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         }
 
         // actions to use a person's ability
+        // TODO: make this a little more DRY
         for (loc, person) in self.enumerate_people() {
             match person {
                 Person::Punk { is_ready, .. } => {
@@ -283,6 +287,42 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
                         for ability in &person_type.abilities {
                             if ability.can_afford_and_perform(game_view) {
                                 actions.push(Action::UsePersonAbility(ability.as_ref(), loc));
+                            }
+                        }
+
+                        // mimic gets its abilities from other people
+                        if person_type.special_type == SpecialType::Mimic {
+                            // assert that enemy people will always be either Ready or Injured
+                            // TODO: measure performance and maybe only check in debug builds
+                            for other_person in game_view.other_state().people() {
+                                assert!(matches!(
+                                    other_person,
+                                    Person::Punk { is_ready: true, .. }
+                                        | Person::NonPunk {
+                                            status: NonPunkStatus::Ready | NonPunkStatus::Injured,
+                                            ..
+                                        }
+                                ), "An enemy person was neither Ready nor Injured");
+                            }
+
+                            // either one of your own ready people, or any undamaged enemy (person)
+                            // TODO: deduplicate these abilities?
+                            let all_people = self.people().chain(game_view.other_state().people());
+                            for other_person in all_people {
+                                if let Person::NonPunk {
+                                    person_type: other_person_type,
+                                    status: NonPunkStatus::Ready,
+                                } = other_person
+                                {
+                                    for ability in &other_person_type.abilities {
+                                        if ability.can_afford_and_perform(game_view) {
+                                            actions.push(Action::UsePersonAbility(
+                                                ability.as_ref(),
+                                                loc,
+                                            ));
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

@@ -6,6 +6,14 @@ use super::{GameResult, GameView, IconEffect};
 /// Type alias for on_enter_play handler functions.
 type OnEnterPlayHandler = fn(&mut GameView, PlayLocation) -> Result<(), GameResult>;
 
+/// Enum for identifying "special" people that require special handling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SpecialType {
+    None,
+    Holdout,
+    Mimic,
+}
+
 /// A type of person card.
 pub struct PersonType {
     /// The person's name.
@@ -26,9 +34,9 @@ pub struct PersonType {
     /// The person's on-enter-play handler, if any.
     pub on_enter_play: Option<OnEnterPlayHandler>,
 
-    /// Whether this is the Holdout card, which can be played for free in a
-    /// column whose camp is destroyed.
-    pub is_holdout: bool,
+    /// The special identity of this person type (if any). Used for people that require special
+    /// handling elsewhere in the code.
+    pub special_type: SpecialType,
 }
 
 impl StyledName for PersonType {
@@ -36,6 +44,27 @@ impl StyledName for PersonType {
     fn styled_name(&self) -> StyledString {
         StyledString::new(self.name, PERSON_READY)
     }
+}
+
+macro_rules! on_enter_play {
+    () => {
+        None
+    };
+    (($game_view:ident) => $on_enter_play:expr) => {
+        Some(|$game_view, _play_loc| $on_enter_play)
+    };
+    (($game_view:ident, $play_loc:ident) => $on_enter_play:expr) => {
+        Some(|$game_view, $play_loc| $on_enter_play)
+    };
+}
+
+macro_rules! special_type {
+    () => {
+        SpecialType::None
+    };
+    ($type:ident) => {
+        SpecialType::$type
+    };
 }
 
 /// Convenience macro to allow omitting certain fields with common defaults.
@@ -47,6 +76,10 @@ macro_rules! person_type {
         junk_effect: $junk_effect:expr,
         cost: $cost:literal,
         abilities: [$($ability:expr),* $(,)?],
+        $(
+            on_enter_play($($on_enter_play_param:ident),+) => $on_enter_play_expr:expr,
+        )?
+        $(special_type: $special_type:tt,)?
     } => {
         PersonType {
             name: $name,
@@ -54,28 +87,8 @@ macro_rules! person_type {
             junk_effect: $junk_effect,
             cost: $cost,
             abilities: vec![$($ability),*],
-            on_enter_play: None,
-            is_holdout: false,
-        }
-    };
-
-    // person type with an on_enter_play effect
-    {
-        name: $name:literal,
-        num_in_deck: $num_in_deck:literal,
-        junk_effect: $junk_effect:expr,
-        cost: $cost:literal,
-        abilities: [$($ability:expr),* $(,)?],
-        on_enter_play($game_view:ident, $play_loc:ident) => $on_enter_play:expr,
-    } => {
-        PersonType {
-            name: $name,
-            num_in_deck: $num_in_deck,
-            junk_effect: $junk_effect,
-            cost: $cost,
-            abilities: vec![$($ability),*],
-            on_enter_play: Some(|$game_view, $play_loc| $on_enter_play),
-            is_holdout: false,
+            on_enter_play: on_enter_play!($(($($on_enter_play_param),+) => $on_enter_play_expr)?),
+            special_type: special_type!($($special_type)?),
         }
     };
 }
@@ -112,14 +125,13 @@ pub fn get_person_types() -> Vec<PersonType> {
                 };
             }],
         },
-        PersonType {
+        person_type! {
             name: "Holdout",
             num_in_deck: 2,
             junk_effect: IconEffect::Raid,
             cost: 2,
-            abilities: vec![icon_ability(1, IconEffect::Damage)],
-            on_enter_play: None,
-            is_holdout: true, // costs 0 to play in the column of a destroyed camp
+            abilities: [icon_ability(1, IconEffect::Damage)],
+            special_type: Holdout, // costs 0 to play in the column of a destroyed camp
         },
         person_type! {
             name: "Repair Bot",
@@ -127,7 +139,7 @@ pub fn get_person_types() -> Vec<PersonType> {
             junk_effect: IconEffect::Injure,
             cost: 1,
             abilities: [icon_ability(2, IconEffect::Restore)],
-            on_enter_play(game_view, _play_loc) => {
+            on_enter_play(game_view) => {
                 // when this card enters play, restore
                 game_view.restore_card();
                 Ok(())
@@ -165,6 +177,14 @@ pub fn get_person_types() -> Vec<PersonType> {
                     Ok(())
                 };
             }],
+        },
+        person_type! {
+            name: "Mimic",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Injure,
+            cost: 1,
+            abilities: [], // mimic gets its abilities from other people
+            special_type: Mimic,
         },
         person_type! {
             name: "Sniper",

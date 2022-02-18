@@ -18,7 +18,7 @@ use self::abilities::Ability;
 use self::camps::CampType;
 use self::controllers::PlayerController;
 use self::locations::*;
-use self::people::PersonType;
+use self::people::{PersonType, SpecialType};
 use self::player_state::*;
 use self::styles::*;
 
@@ -699,7 +699,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                     .remove_one(PersonOrEventType::Person(person_type));
 
                 // play the person onto the board
-                let destroyed_restriction = if person_type.is_holdout {
+                let destroyed_restriction = if person_type.special_type == SpecialType::Holdout {
                     // Only allow a `PlayPerson` action to play Holdout into columns with
                     // non-destroyed camps. Playing it for free into a column with a
                     // destroyed camp is handled by the `PlayHoldout` action variant.
@@ -802,7 +802,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
             Action::PlayPerson(card) => format!(
                 "Play {}{} (costs {WATER}{} water{RESET})",
                 card.styled_name(),
-                if card.is_holdout {
+                if card.special_type == SpecialType::Holdout {
                     " in column without destroyed camp"
                 } else {
                     ""

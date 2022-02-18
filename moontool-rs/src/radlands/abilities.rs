@@ -72,8 +72,8 @@ macro_rules! ability {
     } => {{
         use $crate::radlands::{GameView, GameResult};
         use $crate::radlands::locations::CardLocation;
-        use std::string::String;
-        use std::result::Result;
+        use ::std::string::String;
+        use ::std::result::Result;
         struct MacroAbility;
         impl $crate::abilities::Ability for MacroAbility {
             fn description(&self) -> String {
@@ -99,7 +99,7 @@ macro_rules! ability {
                 $perform
             }
         }
-        std::boxed::Box::new(MacroAbility)
+        ::std::boxed::Box::new(MacroAbility)
     }};
 
     // version where can_perform is always true
