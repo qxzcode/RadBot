@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use super::abilities::*;
 use super::locations::PlayLocation;
 use super::styles::*;
@@ -196,6 +198,46 @@ pub fn get_person_types() -> Vec<PersonType> {
                 cost => 2;
                 can_perform => true;
                 perform(game_view) => game_view.damage_any_enemy();
+            }],
+        },
+        person_type! {
+            name: "Scientist",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Raid,
+            cost: 1,
+            abilities: [ability! {
+                description => "Discard the top 3; may use the junk effect of one";
+                cost => 1;
+                can_perform => true;
+                perform(game_view) => {
+                    // discard the top 3 cards and collect the unique junk effects that can be used
+                    let junk_effects: HashSet<IconEffect> = (0..3)
+                        .filter_map(|_| {
+                            // draw a card, propagating any end-game condition
+                            let card_type = match game_view.game_state.draw_card() {
+                                Ok(card_type) => card_type,
+                                Err(game_result) => return Some(Err(game_result)),
+                            };
+                            println!("Scientist ability drew {}", card_type.styled_name()); // TODO: debug
+
+                            // discard the card
+                            game_view.game_state.discard.push(card_type);
+
+                            // return the card's junk effect (if it can be performed)
+                            let effect = card_type.junk_effect();
+                            if effect.can_perform(game_view) {
+                                Some(Ok(effect))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Result<_, GameResult>>()?;
+
+                    // ask the player which junk effect to use (if any)
+                    todo!();
+
+                    Ok(())
+                };
             }],
         },
         person_type! {
