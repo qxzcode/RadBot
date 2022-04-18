@@ -22,12 +22,7 @@ pub trait PlayerController {
     fn choose_card_to_damage<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
-        target_locs: &[CardLocation],
-    ) -> CardLocation;
-
-    fn choose_card_to_destroy<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
+        destroy: bool,
         target_locs: &[CardLocation],
     ) -> CardLocation;
 

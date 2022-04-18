@@ -4,6 +4,7 @@ use super::people::SpecialType;
 use super::*;
 
 /// Represents the state of a player's board and hand.
+#[derive(Clone)]
 pub struct PlayerState<'ctype> {
     /// The cards in the player's hand, not including Water Silo.
     pub hand: Cards<PersonOrEventType<'ctype>>,
@@ -414,6 +415,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
     }
 }
 
+#[derive(Clone)]
 pub struct CardColumn<'ctype> {
     /// The column's camp.
     pub camp: Camp<'ctype>,
@@ -548,6 +550,7 @@ impl<'ctype> CardColumn<'ctype> {
 }
 
 /// A camp on the board.
+#[derive(Clone)]
 pub struct Camp<'ctype> {
     /// The camp type.
     pub camp_type: &'ctype CampType,
@@ -629,6 +632,7 @@ pub enum CampStatus {
 }
 
 /// A person played on the board (a punk or face-up person).
+#[derive(Clone)]
 pub enum Person<'ctype> {
     Punk {
         /// The identity of the face-down card.

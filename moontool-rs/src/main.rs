@@ -2,6 +2,8 @@ mod cards;
 mod radlands;
 
 use radlands::camps::CampType;
+use radlands::choices::Choice;
+use radlands::locations::Player;
 use radlands::people::PersonType;
 use radlands::*;
 
@@ -39,26 +41,95 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType], random: bool) -
     }
     // let hc1 = RandomController;
     // let hc2 = RandomController;
-    let mut game_state = GameState::new(camp_types, person_types);
+    let (mut game_state, choice) = GameState::new(camp_types, person_types);
 
-    let mut final_turn = None;
-    for turn_num in 1.. {
-        println!("\nTurn {}\n", turn_num);
-        if let Err(result) = game_state.do_turn(p1, p2, turn_num == 1) {
-            println!(
-                "\nGame ended; {}",
-                match result {
-                    GameResult::P1Wins => "player 1 wins!",
-                    GameResult::P2Wins => "player 2 wins!",
-                    GameResult::Tie => "tie!",
-                }
-            );
-            final_turn = Some(turn_num);
-            break;
+    let result = play_to_end(&mut game_state, choice, p1, p2);
+    println!(
+        "\nGame ended; {}",
+        match result {
+            GameResult::P1Wins => "player 1 wins!",
+            GameResult::P2Wins => "player 2 wins!",
+            GameResult::Tie => "tie!",
         }
-    }
+    );
+
+    // let mut final_turn = None;
+    // for turn_num in 1.. {
+    //     println!("\nTurn {}\n", turn_num);
+    //     if let Err(result) = game_state.do_turn(p1, p2, turn_num == 1) {
+    //         println!(
+    //             "\nGame ended; {}",
+    //             match result {
+    //                 GameResult::P1Wins => "player 1 wins!",
+    //                 GameResult::P2Wins => "player 2 wins!",
+    //                 GameResult::Tie => "tie!",
+    //             }
+    //         );
+    //         final_turn = Some(turn_num);
+    //         break;
+    //     }
+    // }
 
     println!("\nFinal state:\n{}", game_state);
 
-    final_turn.unwrap()
+    // final_turn.unwrap()
+    todo!("get the final turn number")
+}
+
+fn play_to_end<'ctype>(
+    game_state: &mut GameState<'ctype>,
+    mut choice: Choice<'ctype>,
+    p1: &dyn PlayerController,
+    p2: &dyn PlayerController,
+) -> GameResult {
+    loop {
+        match do_one_choice(game_state, &choice, p1, p2) {
+            Ok(new_choice) => choice = new_choice,
+            Err(game_result) => return game_result,
+        }
+    }
+}
+
+fn do_one_choice<'ctype>(
+    game_state: &mut GameState<'ctype>,
+    choice: &Choice<'ctype>,
+    p1: &dyn PlayerController,
+    p2: &dyn PlayerController,
+) -> Result<Choice<'ctype>, GameResult> {
+    let get_controller_for = |player: Player| match player {
+        Player::Player1 => p1,
+        Player::Player2 => p2,
+    };
+
+    match choice {
+        Choice::Action(action_choice) => {
+            let action = get_controller_for(game_state.cur_player)
+                .choose_action(&game_state.view_for_cur(), action_choice.actions());
+            action_choice.choose(game_state, action)
+        }
+        Choice::PlayLoc(play_choice) => {
+            let loc = get_controller_for(play_choice.chooser()).choose_play_location(
+                &game_state.view_for_cur(),
+                play_choice.person(),
+                play_choice.locations(),
+            );
+            play_choice.choose(game_state, loc)
+        }
+        Choice::Damage(damage_choice) => {
+            let loc = get_controller_for(damage_choice.chooser()).choose_card_to_damage(
+                &game_state.view_for_cur(),
+                damage_choice.destroy(),
+                damage_choice.locations(),
+            );
+            damage_choice.choose(game_state, loc)
+        }
+        Choice::Restore(restore_choice) => {
+            let loc = get_controller_for(restore_choice.chooser())
+                .choose_card_to_restore(&game_state.view_for_cur(), restore_choice.locations());
+            restore_choice.choose(game_state, loc)
+        }
+        Choice::IconEffect(_) => {
+            todo!("handle Choice::IconEffect");
+        }
+    }
 }

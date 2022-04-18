@@ -1,3 +1,4 @@
+use super::choices::ChoiceFuture;
 use super::locations::CardLocation;
 use super::{GameResult, GameView, IconEffect};
 
@@ -14,11 +15,11 @@ pub trait Ability {
     fn can_perform<'v, 'g: 'v, 'ctype: 'g>(&self, game_view: &'v GameView<'g, 'ctype>) -> bool;
 
     /// Performs this ability.
-    fn perform<'v, 'g: 'v, 'ctype: 'g>(
+    fn perform<'g, 'ctype: 'g>(
         &self,
-        game_view: &'v mut GameView<'g, 'ctype>,
+        game_view: GameView<'g, 'ctype>,
         card_loc: CardLocation,
-    ) -> Result<(), GameResult>;
+    ) -> Result<ChoiceFuture<'g, 'ctype>, GameResult>;
 
     /// Returns whether this ability can be afforded and used given the game state.
     fn can_afford_and_perform<'v, 'g: 'v, 'ctype: 'g>(
@@ -48,11 +49,11 @@ impl Ability for IconAbility {
         self.effect.can_perform(game_view)
     }
 
-    fn perform<'v, 'g: 'v, 'ctype: 'g>(
+    fn perform<'g, 'ctype: 'g>(
         &self,
-        game_view: &'v mut GameView<'g, 'ctype>,
+        game_view: GameView<'g, 'ctype>,
         _card_loc: CardLocation,
-    ) -> Result<(), GameResult> {
+    ) -> Result<ChoiceFuture<'g, 'ctype>, GameResult> {
         self.effect.perform(game_view)
     }
 }
@@ -68,10 +69,11 @@ macro_rules! ability {
         description => $description:literal;
         cost => $cost:expr;
         can_perform($game_view_1:ident) => $can_perform:expr;
-        perform($game_view_2:ident, $card_loc:ident) => $perform:expr;
+        perform($game_view_2_1:ident $($game_view_2_2:ident)?, $card_loc:ident) => $perform:expr;
     } => {{
         use $crate::radlands::{GameView, GameResult};
         use $crate::radlands::locations::CardLocation;
+        use $crate::radlands::choices::ChoiceFuture;
         use ::std::string::String;
         use ::std::result::Result;
         struct MacroAbility;
@@ -91,11 +93,11 @@ macro_rules! ability {
                 $can_perform
             }
 
-            fn perform<'v, 'g: 'v, 'ctype: 'g>(
+            fn perform<'g, 'ctype: 'g>(
                 &self,
-                $game_view_2: &'v mut GameView<'g, 'ctype>,
+                $game_view_2_1 $($game_view_2_2)?: GameView<'g, 'ctype>,
                 $card_loc: CardLocation,
-            ) -> Result<(), GameResult> {
+            ) -> Result<ChoiceFuture<'g, 'ctype>, GameResult> {
                 $perform
             }
         }
@@ -107,13 +109,13 @@ macro_rules! ability {
         description => $description:literal;
         cost => $cost:expr;
         can_perform => true;
-        perform($game_view_2:ident, $card_loc:ident) => $perform:expr;
+        perform($game_view_2_1:ident $($game_view_2_2:ident)?, $card_loc:ident) => $perform:expr;
     } => {
         ability! {
             description => $description;
             cost => $cost;
             can_perform(_game_view) => true;
-            perform($game_view_2, $card_loc) => $perform;
+            perform($game_view_2_1 $($game_view_2_2)?, $card_loc) => $perform;
         }
     };
 
@@ -122,13 +124,13 @@ macro_rules! ability {
         description => $description:literal;
         cost => $cost:expr;
         can_perform($game_view_1:ident) => $can_perform:expr;
-        perform($game_view_2:ident) => $perform:expr;
+        perform($game_view_2_1:ident $($game_view_2_2:ident)?) => $perform:expr;
     } => {
         ability! {
             description => $description;
             cost => $cost;
             can_perform($game_view_1) => $can_perform;
-            perform($game_view_2, _card_loc) => $perform;
+            perform($game_view_2_1 $($game_view_2_2)?, _card_loc) => $perform;
         }
     };
 
@@ -152,13 +154,13 @@ macro_rules! ability {
         description => $description:literal;
         cost => $cost:expr;
         can_perform => true;
-        perform($game_view_2:ident) => $perform:expr;
+        perform($game_view_2_1:ident $($game_view_2_2:ident)?) => $perform:expr;
     } => {
         ability! {
             description => $description;
             cost => $cost;
             can_perform(_game_view) => true;
-            perform($game_view_2) => $perform;
+            perform($game_view_2_1 $($game_view_2_2)?) => $perform;
         }
     };
 }

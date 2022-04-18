@@ -1,5 +1,6 @@
 pub mod abilities;
 pub mod camps;
+pub mod choices;
 pub mod controllers;
 pub mod locations;
 pub mod people;
@@ -16,6 +17,7 @@ use std::mem;
 
 use self::abilities::Ability;
 use self::camps::CampType;
+use self::choices::{Choice, ChoiceFuture, DamageChoice, PlayChoice, RestoreChoice};
 use self::controllers::PlayerController;
 use self::locations::*;
 use self::people::{PersonType, SpecialType};
@@ -29,6 +31,7 @@ pub enum GameResult {
     Tie,
 }
 
+#[derive(Clone)]
 pub struct GameState<'ctype> {
     player1: PlayerState<'ctype>,
     player2: PlayerState<'ctype>,
@@ -37,7 +40,7 @@ pub struct GameState<'ctype> {
     discard: Vec<PersonOrEventType<'ctype>>,
 
     /// The identity of the player whose turn it currently is.
-    cur_player: Player,
+    pub cur_player: Player,
 
     /// The amount of water that the current player has available for use.
     cur_player_water: u32,
@@ -51,7 +54,11 @@ pub struct GameState<'ctype> {
 }
 
 impl<'g, 'ctype: 'g> GameState<'ctype> {
-    pub fn new(camp_types: &'ctype [CampType], person_types: &'ctype [PersonType]) -> Self {
+    /// Creates a game state and initial Choice for a random new game.
+    pub fn new(
+        camp_types: &'ctype [CampType],
+        person_types: &'ctype [PersonType],
+    ) -> (Self, Choice<'ctype>) {
         // populate the deck and shuffle it
         let mut deck = Vec::new();
         for person_type in person_types {
@@ -68,16 +75,26 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         let p1_camps = &chosen_camps[..3];
         let p2_camps = &chosen_camps[3..];
 
-        GameState {
+        let mut game_state = GameState {
             player1: PlayerState::new(p1_camps, &mut deck),
             player2: PlayerState::new(p2_camps, &mut deck),
             deck,
             discard: Vec::new(),
             cur_player: thread_rng().gen(), // randomly pick which player goes first
-            cur_player_water: 0,
+            cur_player_water: 1,            // the first player gets 1 water for the first turn
             has_paid_to_draw: false,
             has_reshuffled_deck: false,
-        }
+        };
+
+        // have the current player draw a card for the start of their turn
+        game_state
+            .view_for_cur()
+            .draw_card_into_hand()
+            .expect("The first draw of the game should always succeed");
+
+        // return the game state and initial Choice of actions
+        let choice = Choice::new_actions(&mut game_state);
+        (game_state, choice)
     }
 
     pub fn player(&'g self, which: Player) -> &'g PlayerState<'ctype> {
@@ -94,19 +111,80 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         }
     }
 
-    pub fn do_turn(
-        &'g mut self,
-        p1_controller: &dyn PlayerController,
-        p2_controller: &dyn PlayerController,
-        is_first_turn: bool,
-    ) -> Result<(), GameResult> {
-        // get a view of the game state for the current player
-        let mut cur_view = match self.cur_player {
-            Player::Player1 => GameView::new(self, self.cur_player, p1_controller, p2_controller),
-            Player::Player2 => GameView::new(self, self.cur_player, p2_controller, p1_controller),
-        };
+    /// Returns a view of this game state from the perspective of the given player.
+    pub fn view_for(&'g mut self, which: Player) -> GameView<'g, 'ctype> {
+        GameView {
+            game_state: self,
+            player: which,
+        }
+    }
 
-        cur_view.do_turn(is_first_turn)
+    /// Returns a view of this game state from the perspective of the current player.
+    pub fn view_for_cur(&'g mut self) -> GameView<'g, 'ctype> {
+        self.view_for(self.cur_player)
+    }
+
+    /// Resolves the current player's first event (if any), then advances any other events.
+    /// Returns a future that may represent choices from the event resolution.
+    fn advance_cur_events(&'g mut self) -> ChoiceFuture<'g, 'ctype> {
+        let mut view = self.view_for_cur();
+
+        // take the first event (if any)
+        let first_event = view.my_state_mut().events[0].take();
+
+        // advance any other events
+        view.my_state_mut().events.rotate_left(1);
+
+        // resolve the first event (if any)
+        if let Some(event) = first_event {
+            // discard it if it's not Raiders
+            if event.as_raiders().is_none() {
+                view.game_state
+                    .discard
+                    .push(PersonOrEventType::Event(event));
+            }
+
+            // resolve the event
+            event.resolve(&mut self.view_for_cur())
+        } else {
+            ChoiceFuture::immediate(self)
+        }
+    }
+
+    /// Ends the current player's turn and starts the next player's turn.
+    /// Returns the next Choice.
+    pub fn end_turn(&'g mut self) -> Result<Choice<'ctype>, GameResult> {
+        // set all camps and uninjured people to be ready
+        for col in &mut self.player_mut(self.cur_player).columns {
+            col.camp.set_ready(true);
+            for person in col.people_mut() {
+                person.set_ready();
+            }
+        }
+
+        // switch whose turn it is
+        self.cur_player = self.cur_player.other();
+
+        // resolve/advance events
+        self.advance_cur_events().then(move |game_state, _| {
+            let mut view = game_state.view_for_cur();
+
+            // replenish water
+            view.game_state.cur_player_water = 3;
+            if view.my_state().has_water_silo {
+                view.game_state.cur_player_water += 1;
+                view.my_state_mut().has_water_silo = false;
+            }
+
+            // reset other turn state
+            view.game_state.has_paid_to_draw = false;
+
+            // draw a card
+            view.draw_card_into_hand()?;
+
+            // return the next choice of actions
+            Ok(Choice::new_actions(game_state))
+        })
     }
 
     /// Damages or destroys the card at the given location.
@@ -192,7 +270,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
     /// be shifted back.
     ///
     /// Assumes that all locations are unique.
-    /// Panics if there is no card at any of the locations.
+    /// Panics if any location has no card there.
     fn damage_cards_at(
         &mut self,
         locations: impl IntoIterator<Item = CardLocation>,
@@ -219,6 +297,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
     pub fn draw_card(&'g mut self) -> Result<PersonOrEventType<'ctype>, GameResult> {
         if self.deck.is_empty() {
             if self.discard.is_empty() {
+                // Both the deck and discard are empty.
                 // Theoretically, this could legitimately happen if one or more players
                 // hoard a huge amount of cards in their hand. The following behavior
                 // is a bit of a hack to stop the game, since it couldn't meaningfully
@@ -256,6 +335,35 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
     /// Adds 1 water to the current player's pool.
     pub fn gain_water(&mut self) {
         self.cur_player_water += 1;
+    }
+
+    /// Plays or advances a player's Raiders event.
+    pub fn raid(&'g mut self, player: Player) -> ChoiceFuture<'g, 'ctype> {
+        // search for the Raiders event in the event queue
+        let my_state = self.player_mut(player);
+        for i in 0..my_state.events.len() {
+            if let Some(event) = my_state.events[i] {
+                if let Some(raiders) = event.as_raiders() {
+                    // found the raiders event
+                    if i == 0 {
+                        // it's the first event, so remove and resolve it
+                        my_state.events[0] = None;
+                        return raiders.resolve(&mut self.view_for(player));
+                    } else {
+                        // it's not the first event, so advance it if possible
+                        let events = &mut my_state.events;
+                        if events[i - 1].is_none() {
+                            events[i - 1] = events[i].take();
+                        }
+                        return ChoiceFuture::immediate(self); // no choice to make
+                    }
+                }
+            }
+        }
+
+        // if we get here, the raiders event was not found in the event queue;
+        // add it to the queue
+        self.view_for(player).play_event(&RaidersEvent)
     }
 
     /// Returns an object for formatting the game state with numbered tags for actions.
@@ -318,29 +426,9 @@ pub struct GameView<'g, 'ctype: 'g> {
 
     /// The identity of the player whose view this is for.
     player: Player,
-
-    /// The controller for the player whose view this is for.
-    my_controller: &'g dyn PlayerController,
-
-    /// The controller for the other player.
-    other_controller: &'g dyn PlayerController,
 }
 
 impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
-    pub fn new(
-        game_state: &'g mut GameState<'ctype>,
-        player: Player,
-        my_controller: &'g dyn PlayerController,
-        other_controller: &'g dyn PlayerController,
-    ) -> Self {
-        GameView {
-            game_state,
-            player,
-            my_controller,
-            other_controller,
-        }
-    }
-
     pub fn my_state(&self) -> &PlayerState<'ctype> {
         self.game_state.player(self.player)
     }
@@ -354,76 +442,20 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
     }
 
     pub fn other_view_mut(&'v mut self) -> GameView<'v, 'ctype> {
-        GameView::new(
-            self.game_state,
-            self.player.other(),
-            self.other_controller,
-            self.my_controller,
-        )
+        GameView {
+            game_state: self.game_state,
+            player: self.player.other(),
+        }
     }
 
-    fn do_turn(&'v mut self, is_first_turn: bool) -> Result<(), GameResult> {
-        // resolve/advance events
-        if let Some(event) = self.my_state_mut().events[0].take() {
-            // resolve the first event
-            event.resolve(self)?;
-
-            // discard it if it's not Raiders
-            if event.as_raiders().is_none() {
-                self.game_state
-                    .discard
-                    .push(PersonOrEventType::Event(event));
-            }
-        }
-        self.my_state_mut().events.rotate_left(1);
-
-        // replenish water
-        self.game_state.cur_player_water = if is_first_turn { 1 } else { 3 };
-        if self.my_state().has_water_silo {
-            self.game_state.cur_player_water += 1;
-            self.my_state_mut().has_water_silo = false;
-        }
-
-        // reset other turn state
-        self.game_state.has_paid_to_draw = false;
-
-        // draw a card
-        self.draw_card_into_hand()?;
-
-        // perform actions
-        loop {
-            // get all the possible actions
-            let actions = self.my_state().actions(self);
-
-            // ask the player what to do
-            let action = self.my_controller.choose_action(self, &actions);
-
-            // perform the action
-            if action.perform(self)? {
-                break;
-            }
-
-            // check for win condition
-            //...
-        }
-
-        // set all camps and uninjured people to be ready
-        for col in &mut self.my_state_mut().columns {
-            col.camp.set_ready(true);
-            for person in col.people_mut() {
-                person.set_ready();
-            }
-        }
-
-        // finally, switch whose turn it is
-        self.game_state.cur_player = self.game_state.cur_player.other();
-
-        Ok(())
+    pub fn immediate_future(self) -> ChoiceFuture<'g, 'ctype> {
+        let game_state = self.game_state;
+        ChoiceFuture::immediate(game_state)
     }
 
     /// Has this player damage an unprotected opponent card.
     /// Returns the location of the card that was damaged.
-    pub fn damage_enemy(&mut self) -> Result<CardLocation, GameResult> {
+    pub fn damage_enemy(&mut self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
         // get all possible targets
         let target_locs = self
             .other_state()
@@ -432,11 +464,11 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
             .collect_vec();
 
         // ask the player to damage one of them
-        self.choose_and_damage_card(&target_locs)
+        self.choose_and_damage_card(target_locs)
     }
 
     /// Has this player damage any opponent card.
-    pub fn damage_any_enemy(&mut self) -> Result<(), GameResult> {
+    pub fn damage_any_enemy(&'v self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
         // get all possible targets
         let target_locs = self
             .other_state()
@@ -445,14 +477,12 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
             .collect_vec();
 
         // ask the player to damage one of them
-        self.choose_and_damage_card(&target_locs)?;
-
-        Ok(())
+        self.choose_and_damage_card(target_locs)
     }
 
     /// Has this player injure an unprotected opponent person.
     /// Assumes that the opponent has at least one person.
-    pub fn injure_enemy(&mut self) {
+    pub fn injure_enemy(&mut self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
         // get all possible targets
         let target_locs = self
             .other_state()
@@ -461,8 +491,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
             .collect_vec();
 
         // ask the player to injure one of them
-        self.choose_and_damage_card(&target_locs)
-            .expect("injure_enemy should not end the game");
+        self.choose_and_damage_card(target_locs)
     }
 
     /// Injures all unprotected opponent people.
@@ -483,21 +512,15 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
     /// Has this player choose and then damage a card from a given list of locations.
     /// Returns the location of the card that was damaged.
     pub fn choose_and_damage_card(
-        &mut self,
-        locs: &[CardLocation],
-    ) -> Result<CardLocation, GameResult> {
-        // ask the player which one to damage
-        let target_loc = self.my_controller.choose_card_to_damage(self, locs);
-
-        // damage the card
-        self.game_state.damage_card_at(target_loc, false, true)?;
-
-        Ok(target_loc)
+        &'v self,
+        locs: Vec<CardLocation>,
+    ) -> ChoiceFuture<'g, 'ctype, CardLocation> {
+        DamageChoice::future(self.player, false, locs)
     }
 
     /// Has this player destroy one of their own people.
     /// Assumes that the player has at least one person.
-    pub fn destroy_own_person(&mut self) {
+    pub fn destroy_own_person(&'v self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
         // get all possible targets
         let target_locs = self
             .my_state()
@@ -506,35 +529,28 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
             .collect_vec();
 
         // ask the player to destroy one of them
-        self.choose_and_destroy_card(&target_locs)
-            .expect("destroy_own_person should not end the game");
+        self.choose_and_destroy_card(target_locs)
     }
 
     /// Has this player choose and then destroy a card from a given list of locations.
-    pub fn choose_and_destroy_card(&mut self, locs: &[CardLocation]) -> Result<(), GameResult> {
-        // ask the player which one to destroy
-        let target_loc = self.my_controller.choose_card_to_destroy(self, locs);
-
-        // destroy the card
-        self.game_state.damage_card_at(target_loc, true, true)
+    pub fn choose_and_destroy_card(
+        &'v self,
+        locs: Vec<CardLocation>,
+    ) -> ChoiceFuture<'g, 'ctype, CardLocation> {
+        DamageChoice::future(self.player, true, locs)
     }
 
     /// Has this player restore one of their own damaged cards,
     /// or does nothing if the player does not have at least one restorable card.
-    pub fn restore_card(&mut self) {
+    pub fn restore_card(self) -> ChoiceFuture<'g, 'ctype> {
         // get all possible targets
         let target_locs = self.my_state().restorable_card_locs().collect_vec();
         if target_locs.is_empty() {
-            return;
+            return self.immediate_future();
         }
 
         // ask the player which one to restore
-        let target_loc = self
-            .my_controller
-            .choose_card_to_restore(self, &target_locs);
-
-        // restore the card
-        self.my_state_mut().restore_card_at(target_loc);
+        RestoreChoice::future(self.player, target_locs)
     }
 
     /// Draws a card from the deck and puts it in this player's hand.
@@ -544,55 +560,33 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
         Ok(())
     }
 
-    /// Plays or advances this player's Raiders event.
-    pub fn raid(&'v mut self) -> Result<(), GameResult> {
-        // search for the Raiders event in the event queue
-        for i in 0..self.my_state().events.len() {
-            if let Some(event) = self.my_state().events[i] {
-                if let Some(raiders) = event.as_raiders() {
-                    // found the raiders event
-                    if i == 0 {
-                        // it's the first event, so resolve and remove it
-                        raiders.resolve(self)?;
-                        self.my_state_mut().events[0] = None;
-                    } else {
-                        // it's not the first event, so advance it if possible
-                        let events = &mut self.my_state_mut().events;
-                        if events[i - 1].is_none() {
-                            events[i - 1] = events[i].take();
-                        }
-                    }
-                    return Ok(());
-                }
-            }
-        }
-
-        // if we get here, the raiders event was not found in the event queue;
-        // add it to the queue
-        self.play_event(&RaidersEvent);
-        Ok(())
-    }
-
-    /// Plays an event into this player's event queue.
+    /// Plays an event into this player's event queue (or resolves it immediately
+    /// if it's a 0-turn event).
     /// Panics if there is not a free slot for the event.
-    fn play_event(&'v mut self, event: &'ctype dyn EventType) {
-        let slot_index = (event.resolve_turns() - 1) as usize;
-        let free_slot = self.my_state_mut().events[slot_index..]
-            .iter_mut()
-            .find(|slot| slot.is_none())
-            .expect("Tried to play an event, but there was no free slot");
-        *free_slot = Some(event);
+    fn play_event(mut self, event: &'ctype dyn EventType) -> ChoiceFuture<'g, 'ctype> {
+        if event.resolve_turns() == 0 {
+            event.resolve(&mut self)
+        } else {
+            let slot_index = (event.resolve_turns() - 1) as usize;
+            let free_slot = self.my_state_mut().events[slot_index..]
+                .iter_mut()
+                .find(|slot| slot.is_none())
+                .expect("Tried to play an event, but there was no free slot");
+            *free_slot = Some(event);
+
+            self.immediate_future()
+        }
     }
 
     /// Has this player add a punk to their board.
     /// Does nothing if the player's board is full.
-    pub fn gain_punk(&mut self) -> Result<(), GameResult> {
+    pub fn gain_punk(self) -> Result<ChoiceFuture<'g, 'ctype>, GameResult> {
         if self.my_state().has_empty_person_slot() {
             let punk = Person::new_punk(self.game_state.draw_card()?);
-            self.play_person(punk, None)
-                .expect("Playing a punk should not end the game");
+            Ok(self.play_person(punk, None))
+        } else {
+            Ok(self.immediate_future())
         }
-        Ok(())
     }
 
     /// Asks this player's controller to choose a location, then plays the given person
@@ -601,10 +595,10 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
     /// columns where `column.camp.is_destroyed() == camp_destroyed`.
     /// Assumes that there is at least one valid play location.
     fn play_person(
-        &'v mut self,
+        &'v self,
         person: Person<'ctype>,
         camp_destroyed: Option<bool>,
-    ) -> Result<(), GameResult> {
+    ) -> ChoiceFuture<'g, 'ctype> {
         // determine possible locations to place the card
         let mut play_locs = Vec::new();
         for (col_index, col) in self.my_state().enumerate_columns() {
@@ -629,30 +623,8 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
             }
         }
 
-        // ask the player controller which location to play the card into
-        let play_loc = self
-            .my_controller
-            .choose_play_location(self, &person, &play_locs);
-
-        // place the card onto the board
-        let col_index = play_loc.column().as_usize();
-        let row_index = play_loc.row().as_usize();
-        let col = &mut self.my_state_mut().columns[col_index];
-        if let Some(old_person) = col.person_slots[row_index].replace(person) {
-            // if there was a person already in the slot, move the old person to the other slot
-            let other_row_index = 1 - row_index;
-            let other_slot_old = col.person_slots[other_row_index].replace(old_person);
-            assert!(other_slot_old.is_none()); // ensure that the other slot was empty
-        }
-
-        // finally, activate any "when this card enters play" effect of the person
-        if let Person::NonPunk { person_type, .. } = col.person_slots[row_index].as_ref().unwrap() {
-            if let Some(on_enter_play) = person_type.on_enter_play {
-                on_enter_play(self, play_loc)?;
-            }
-        }
-
-        Ok(())
+        // ask the player which location to play the card into
+        PlayChoice::future(self.player, person, play_locs)
     }
 }
 
@@ -688,7 +660,7 @@ pub enum Action<'ctype> {
 impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
     /// Performs the action on the given game view.
     /// Returns whether the player's turn should end after this action.
-    fn perform(&self, game_view: &'v mut GameView<'g, 'ctype>) -> Result<bool, GameResult> {
+    fn perform(&self, mut game_view: GameView<'g, 'ctype>) -> Result<Choice<'ctype>, GameResult> {
         match *self {
             Action::PlayPerson(person_type) => {
                 // pay the person's cost and remove it from the player's hand
@@ -708,9 +680,9 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                     // No such restriction for other people.
                     None
                 };
-                game_view.play_person(Person::new_non_punk(person_type), destroyed_restriction)?;
-
-                Ok(false)
+                game_view
+                    .play_person(Person::new_non_punk(person_type), destroyed_restriction)
+                    .then(|game_state, _| Ok(Choice::new_actions(game_state)))
             }
             Action::PlayHoldout(person_type) => {
                 // remove the person from the player's hand
@@ -722,9 +694,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                 // play the person into a column with a destroyed camp
                 game_view
                     .play_person(Person::new_non_punk(person_type), Some(true))
-                    .expect("Playing Holdout should not end the game");
-
-                Ok(false)
+                    .then(|game_state, _| Ok(Choice::new_actions(game_state)))
             }
             Action::PlayEvent(event_type) => {
                 // pay the event's cost and remove it from the player's hand
@@ -734,16 +704,16 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                     .hand
                     .remove_one(PersonOrEventType::Event(event_type));
 
-                // add the event to the event queue
-                game_view.play_event(event_type);
-
-                Ok(false)
+                // play the event
+                game_view
+                    .play_event(event_type)
+                    .then(|game_state, _| Ok(Choice::new_actions(game_state)))
             }
             Action::DrawCard => {
                 game_view.game_state.spend_water(2);
                 game_view.draw_card_into_hand()?;
                 game_view.game_state.has_paid_to_draw = true;
-                Ok(false)
+                Ok(Choice::new_actions(game_view.game_state))
             }
             Action::JunkCard(card) => {
                 // move the card to the discard pile
@@ -751,13 +721,13 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                 game_view.game_state.discard.push(card);
 
                 // perform the card's junk effect
-                card.junk_effect().perform(game_view)?;
-
-                Ok(false)
+                card.junk_effect()
+                    .perform(game_view)?
+                    .then(|game_state, _| Ok(Choice::new_actions(game_state)))
             }
             Action::UsePersonAbility(ability, location) => {
                 // pay the ability's cost
-                game_view.game_state.spend_water(ability.cost(game_view));
+                game_view.game_state.spend_water(ability.cost(&game_view));
 
                 // mark the person as no longer ready
                 game_view
@@ -767,31 +737,31 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                     .set_not_ready();
 
                 // perform the ability
-                ability.perform(game_view, location.for_player(game_view.player))?;
-
-                Ok(false)
+                let card_loc = location.for_player(game_view.player);
+                ability
+                    .perform(game_view, card_loc)?
+                    .then(|game_state, _| Ok(Choice::new_actions(game_state)))
             }
             Action::UseCampAbility(ability, column_index) => {
                 // pay the ability's cost
-                game_view.game_state.spend_water(ability.cost(game_view));
+                game_view.game_state.spend_water(ability.cost(&game_view));
 
                 // mark the camp as no longer ready
                 let camp = &mut game_view.my_state_mut().columns[column_index.as_usize()].camp;
                 camp.set_ready(false);
 
                 // perform the ability
-                ability.perform(
-                    game_view,
-                    CardLocation::new(column_index, CardRowIndex::camp(), game_view.player),
-                )?;
-
-                Ok(false)
+                let card_loc =
+                    CardLocation::new(column_index, CardRowIndex::camp(), game_view.player);
+                ability
+                    .perform(game_view, card_loc)?
+                    .then(|game_state, _| Ok(Choice::new_actions(game_state)))
             }
             Action::EndTurn => {
                 // take Water Silo if possible, then end the turn
                 game_view.my_state_mut().has_water_silo =
                     game_view.game_state.cur_player_water >= 1;
-                Ok(true)
+                game_view.game_state.end_turn()
             }
         }
     }
@@ -930,10 +900,11 @@ pub trait EventType {
     fn resolve_turns(&self) -> u8;
 
     /// Resolves the event. Takes a view from the perspective of this event's owner.
+    /// Returns a ChoiceFuture for the event's resolution.
     fn resolve<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
+        &'ctype self,
         game_view: &'v mut GameView<'g, 'ctype>,
-    ) -> Result<(), GameResult>;
+    ) -> ChoiceFuture<'g, 'ctype>;
 
     /// Returns this event if it is the Raiders event, otherwise None.
     fn as_raiders(&self) -> Option<&RaidersEvent> {
@@ -972,9 +943,9 @@ impl EventType for RaidersEvent {
     }
 
     fn resolve<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
+        &'ctype self,
         game_view: &'v mut GameView<'g, 'ctype>,
-    ) -> Result<(), GameResult> {
+    ) -> ChoiceFuture<'g, 'ctype> {
         // have the other player choose one of their (non-destroyed) camps to damage
         let target_locs = game_view
             .other_state()
@@ -987,11 +958,9 @@ impl EventType for RaidersEvent {
                 }
             })
             .collect_vec();
-        game_view
-            .other_view_mut()
-            .choose_and_damage_card(&target_locs)?;
 
-        Ok(())
+        // have the other player choose one of their (non-destroyed) camps to damage
+        DamageChoice::future(game_view.player.other(), false, target_locs).ignore_result()
     }
 
     fn as_raiders(&self) -> Option<&RaidersEvent> {
@@ -1026,16 +995,19 @@ impl IconEffect {
     }
 
     /// Performs the effect for the current player.
-    pub fn perform(&self, game_view: &mut GameView) -> Result<(), GameResult> {
+    pub fn perform<'g, 'ctype: 'g>(
+        &self,
+        mut game_view: GameView<'g, 'ctype>,
+    ) -> Result<ChoiceFuture<'g, 'ctype>, GameResult> {
         match *self {
             IconEffect::Damage => {
-                game_view.damage_enemy()?;
+                return Ok(game_view.damage_enemy().ignore_result());
             }
             IconEffect::Injure => {
-                game_view.injure_enemy();
+                return Ok(game_view.injure_enemy().ignore_result());
             }
             IconEffect::Restore => {
-                game_view.restore_card();
+                return Ok(game_view.restore_card());
             }
             IconEffect::Draw => {
                 game_view.draw_card_into_hand()?;
@@ -1044,12 +1016,12 @@ impl IconEffect {
                 game_view.game_state.gain_water();
             }
             IconEffect::GainPunk => {
-                game_view.gain_punk()?;
+                return game_view.gain_punk();
             }
             IconEffect::Raid => {
-                game_view.raid()?;
+                return Ok(game_view.game_state.raid(game_view.player));
             }
         }
-        Ok(())
+        Ok(ChoiceFuture::immediate(game_view.game_state))
     }
 }

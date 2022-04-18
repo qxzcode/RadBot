@@ -89,20 +89,15 @@ impl PlayerController for HumanController {
     fn choose_card_to_damage<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
+        destroy: bool,
         target_locs: &[CardLocation],
     ) -> CardLocation {
         print_card_selection(game_view.game_state, target_locs);
-        let loc_number = self.prompt_for_number("Choose a card to damage: ", 1..=target_locs.len());
-        target_locs[loc_number - 1]
-    }
-
-    fn choose_card_to_destroy<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
-        target_locs: &[CardLocation],
-    ) -> CardLocation {
-        print_card_selection(game_view.game_state, target_locs);
-        let loc_number = self.prompt_for_number("Choose a card to destroy: ", 1..=target_locs.len());
+        let prompt = format!(
+            "Choose a card to {}: ",
+            if destroy { "destroy" } else { "damage" }
+        );
+        let loc_number = self.prompt_for_number(&prompt, 1..=target_locs.len());
         target_locs[loc_number - 1]
     }
 

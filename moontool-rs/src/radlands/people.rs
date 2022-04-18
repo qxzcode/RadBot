@@ -1,12 +1,14 @@
 use std::collections::HashSet;
 
 use super::abilities::*;
+use super::choices::ChoiceFuture;
 use super::locations::PlayLocation;
 use super::styles::*;
-use super::{GameResult, GameView, IconEffect};
+use super::{GameView, IconEffect};
 
 /// Type alias for on_enter_play handler functions.
-type OnEnterPlayHandler = fn(&mut GameView, PlayLocation) -> Result<(), GameResult>;
+type OnEnterPlayHandler =
+    for<'g, 'ctype> fn(GameView<'g, 'ctype>, PlayLocation) -> ChoiceFuture<'g, 'ctype>;
 
 /// Enum for identifying "special" people that require special handling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -107,8 +109,10 @@ pub fn get_person_types() -> Vec<PersonType> {
                 cost => 0;
                 can_perform => true;
                 perform(game_view) => {
-                    game_view.destroy_own_person();
-                    IconEffect::Damage.perform(game_view)
+                    let player = game_view.player;
+                    Ok(game_view.destroy_own_person().then_future_chain(move |game_state, _| {
+                        IconEffect::Damage.perform(game_state.view_for(player))
+                    }))
                 };
             }],
         },
@@ -121,9 +125,9 @@ pub fn get_person_types() -> Vec<PersonType> {
                 description => "Injure all unprotected enemies";
                 cost => 2;
                 can_perform(game_view) => IconEffect::Injure.can_perform(game_view);
-                perform(game_view) => {
+                perform(mut game_view) => {
                     game_view.injure_all_unprotected_enemies();
-                    Ok(())
+                    Ok(game_view.immediate_future())
                 };
             }],
         },
@@ -143,8 +147,7 @@ pub fn get_person_types() -> Vec<PersonType> {
             abilities: [icon_ability(2, IconEffect::Restore)],
             on_enter_play(game_view) => {
                 // when this card enters play, restore
-                game_view.restore_card();
-                Ok(())
+                game_view.restore_card()
             },
         },
         person_type! {
@@ -171,12 +174,14 @@ pub fn get_person_types() -> Vec<PersonType> {
                 description => "Damage; if this hits a camp, draw";
                 cost => 2;
                 can_perform => true;
-                perform(game_view) => {
-                    let damaged_loc = game_view.damage_enemy()?;
-                    if damaged_loc.row().is_camp() {
-                        game_view.draw_card_into_hand()?;
-                    }
-                    Ok(())
+                perform(mut game_view) => {
+                    let player = game_view.player;
+                    Ok(game_view.damage_enemy().then_future(move |game_state, damaged_loc| {
+                        if damaged_loc.row().is_camp() {
+                            game_state.view_for(player).draw_card_into_hand()?;
+                        }
+                        Ok(())
+                    }))
                 };
             }],
         },
@@ -197,7 +202,7 @@ pub fn get_person_types() -> Vec<PersonType> {
                 description => "Damage any (opponent) card";
                 cost => 2;
                 can_perform => true;
-                perform(game_view) => game_view.damage_any_enemy();
+                perform(game_view) => Ok(game_view.damage_any_enemy().ignore_result());
             }],
         },
         person_type! {
@@ -225,7 +230,7 @@ pub fn get_person_types() -> Vec<PersonType> {
 
                             // return the card's junk effect (if it can be performed)
                             let effect = card_type.junk_effect();
-                            if effect.can_perform(game_view) {
+                            if effect.can_perform(&game_view) {
                                 Some(Ok(effect))
                             } else {
                                 None
@@ -235,8 +240,6 @@ pub fn get_person_types() -> Vec<PersonType> {
 
                     // ask the player which junk effect to use (if any)
                     todo!();
-
-                    Ok(())
                 };
             }],
         },

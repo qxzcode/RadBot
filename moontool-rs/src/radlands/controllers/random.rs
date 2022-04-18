@@ -15,7 +15,10 @@ impl PlayerController for RandomController {
         let chosen_action = actions
             .choose(&mut rng)
             .expect("choose_action called with empty actions list");
-        println!("{BOLD}RandomController chose action:{RESET} {}", chosen_action.format(game_view));
+        println!(
+            "{BOLD}RandomController chose action:{RESET} {}",
+            chosen_action.format(game_view)
+        );
         chosen_action
     }
 
@@ -36,26 +39,15 @@ impl PlayerController for RandomController {
     fn choose_card_to_damage<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         _game_view: &'v GameView<'g, 'ctype>,
+        destroy: bool,
         target_locs: &[CardLocation],
     ) -> CardLocation {
         let mut rng = thread_rng();
         let chosen_target = target_locs
             .choose(&mut rng)
             .expect("choose_card_to_damage called with empty target_locs list");
-        println!("{BOLD}RandomController chose damage target:{RESET} {chosen_target:?}");
-        *chosen_target
-    }
-
-    fn choose_card_to_destroy<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        _game_view: &'v GameView<'g, 'ctype>,
-        target_locs: &[CardLocation],
-    ) -> CardLocation {
-        let mut rng = thread_rng();
-        let chosen_target = target_locs
-            .choose(&mut rng)
-            .expect("choose_card_to_destroy called with empty target_locs list");
-        println!("{BOLD}RandomController chose destroy target:{RESET} {chosen_target:?}");
+        let verb = if destroy { "destroy" } else { "damage" };
+        println!("{BOLD}RandomController chose {verb} target:{RESET} {chosen_target:?}");
         *chosen_target
     }
 
