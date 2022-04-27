@@ -78,7 +78,7 @@ fn print_choice_stats<C>(
 pub struct MonteCarloController<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool = false>
 {
     pub player: Player,
-    pub num_simulations: usize,
+    pub choice_time_limit: Duration,
     pub make_rollout_controller: F,
 }
 
@@ -120,6 +120,8 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> MonteCarloContr
             return &choices[0];
         }
 
+        let start_time = Instant::now();
+
         let mut choice_stats_vec = choices
             .iter()
             .map(|choice| ChoiceStats {
@@ -132,8 +134,9 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> MonteCarloContr
         if !QUIET {
             print_choice_stats(&choice_stats_vec, &format_choice, true);
         }
-        let mut last_print_time = Instant::now();
-        for rollout_num in (choices.len() + 1)..=self.num_simulations {
+        let mut last_print_time = start_time;
+        let mut rollout_num = choices.len();
+        while start_time.elapsed() < self.choice_time_limit {
             // choose a choice to simulate using UCB1
             let choice_stats = choice_stats_vec
                 .iter_mut()
@@ -141,16 +144,19 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> MonteCarloContr
                 .unwrap();
 
             // perform a rollout for that choice
+            rollout_num += 1;
             choice_stats.num_rollouts += 1;
             choice_stats.total_score +=
                 self.compute_rollout_score(game_view.game_state, &choose_func, choice_stats.choice);
 
             // update the live stats display
-            let now = Instant::now();
-            let elapsed = now.duration_since(last_print_time);
-            if !QUIET && elapsed > Duration::from_millis(100) {
-                print_choice_stats(&choice_stats_vec, &format_choice, false);
-                last_print_time = now;
+            if !QUIET {
+                let now = Instant::now();
+                let elapsed = now.duration_since(last_print_time);
+                if elapsed > Duration::from_millis(100) {
+                    print_choice_stats(&choice_stats_vec, &format_choice, false);
+                    last_print_time = now;
+                }
             }
         }
         if !QUIET {

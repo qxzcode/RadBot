@@ -1,6 +1,8 @@
 mod cards;
 mod radlands;
 
+use std::time::Duration;
+
 use radlands::camps::CampType;
 use radlands::choices::Choice;
 use radlands::locations::Player;
@@ -32,27 +34,26 @@ fn main() {
 }
 
 fn do_game(camp_types: &[CampType], person_types: &[PersonType], random: bool, hvm: bool) -> u32 {
-    let p1: &dyn PlayerController;
-    let p2: &dyn PlayerController;
+    let p1: Box<dyn PlayerController>;
+    let p2: Box<dyn PlayerController>;
     if random {
-        p1 = &RandomController { quiet: false };
-        p2 = &RandomController { quiet: false };
+        p1 = Box::new(RandomController { quiet: false });
+        p2 = Box::new(RandomController { quiet: false });
     } else if hvm {
-        p1 = &MonteCarloController::<_, _, false> {
+        p1 = Box::new(MonteCarloController::<_, _, false> {
             player: Player::Player1,
-            num_simulations: 50_000,
+            choice_time_limit: Duration::from_secs_f64(5.0),
             make_rollout_controller: |_| RandomController { quiet: true },
-        };
-        p2 = &HumanController { label: "Human" };
+        });
+        p2 = Box::new(HumanController { label: "Human" });
     } else {
-        p1 = &HumanController { label: "Human 1" };
-        p2 = &HumanController { label: "Human 2" };
+        p1 = Box::new(HumanController { label: "Human 1" });
+        p2 = Box::new(HumanController { label: "Human 2" });
     }
-    // let hc1 = RandomController;
-    // let hc2 = RandomController;
+
     let (mut game_state, choice) = GameState::new(camp_types, person_types);
 
-    let result = play_to_end(&mut game_state, choice, p1, p2);
+    let result = play_to_end(&mut game_state, choice, p1.as_ref(), p2.as_ref());
     println!(
         "\nGame ended; {}",
         match result {
