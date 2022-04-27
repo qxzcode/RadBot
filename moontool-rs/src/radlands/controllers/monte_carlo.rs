@@ -33,6 +33,12 @@ impl<'c, C> ChoiceStats<'c, C> {
         let win_rate = (self.total_score as f64) / ((self.num_rollouts * 2) as f64);
         NotNan::new(win_rate).expect("win rate is NaN")
     }
+
+    /// The UCB1 score for a choice.
+    /// https://gibberblot.github.io/rl-notes/single-agent/multi-armed-bandits.html
+    fn ucb1_score(&self, rollout_num: usize) -> NotNan<f64> {
+        self.win_rate() + (2.0 * (rollout_num as f64).ln() / (self.num_rollouts as f64)).sqrt()
+    }
 }
 
 fn print_choice_stats<C>(
@@ -126,8 +132,11 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> MonteCarloContr
             print_choice_stats(&choice_stats_vec, &format_choice, true);
         }
         for rollout_num in (choices.len() + 1)..=self.num_simulations {
-            // choose a choice to simulate
-            let choice_stats = choice_stats_vec.choose_mut(&mut thread_rng()).unwrap();
+            // choose a choice to simulate using UCB1
+            let choice_stats = choice_stats_vec
+                .iter_mut()
+                .max_by_key(|choice_stats| choice_stats.ucb1_score(rollout_num))
+                .unwrap();
 
             // perform a rollout for that choice
             choice_stats.num_rollouts += 1;
