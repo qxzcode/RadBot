@@ -31,4 +31,10 @@ pub trait PlayerController {
         game_view: &'v GameView<'g, 'ctype>,
         target_locs: &[PlayerCardLocation],
     ) -> PlayerCardLocation;
+
+    fn choose_icon_effect<'v, 'g: 'v, 'ctype: 'g>(
+        &self,
+        game_view: &'v GameView<'g, 'ctype>,
+        icon_effects: &[IconEffect],
+    ) -> IconEffect;
 }

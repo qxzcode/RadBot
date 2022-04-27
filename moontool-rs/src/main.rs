@@ -128,8 +128,12 @@ fn do_one_choice<'ctype>(
                 .choose_card_to_restore(&game_state.view_for_cur(), restore_choice.locations());
             restore_choice.choose(game_state, loc)
         }
-        Choice::IconEffect(_) => {
-            todo!("handle Choice::IconEffect");
+        Choice::IconEffect(icon_effect_choice) => {
+            let icon_effect = get_controller_for(icon_effect_choice.chooser()).choose_icon_effect(
+                &game_state.view_for_cur(),
+                icon_effect_choice.icon_effects(),
+            );
+            icon_effect_choice.choose(game_state, icon_effect)
         }
     }
 }

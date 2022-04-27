@@ -63,4 +63,17 @@ impl PlayerController for RandomController {
         println!("{BOLD}RandomController chose restore target:{RESET} {chosen_target:?}");
         *chosen_target
     }
+
+    fn choose_icon_effect<'v, 'g: 'v, 'ctype: 'g>(
+        &self,
+        _game_view: &'v GameView<'g, 'ctype>,
+        icon_effects: &[IconEffect],
+    ) -> IconEffect {
+        let mut rng = thread_rng();
+        let chosen_icon_effect = icon_effects
+            .choose(&mut rng)
+            .expect("choose_icon_effect called with empty icon_effects list");
+        println!("{BOLD}RandomController chose icon effect:{RESET} {chosen_icon_effect:?}");
+        *chosen_icon_effect
+    }
 }

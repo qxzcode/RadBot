@@ -111,6 +111,18 @@ impl PlayerController for HumanController {
             self.prompt_for_number("Choose a card to restore: ", 1..=target_locs.len());
         target_locs[loc_number - 1]
     }
+
+    fn choose_icon_effect<'v, 'g: 'v, 'ctype: 'g>(
+        &self,
+        _game_view: &'v GameView<'g, 'ctype>,
+        icon_effects: &[IconEffect],
+    ) -> IconEffect {
+        for (i, icon_effect) in icon_effects.iter().enumerate() {
+            println!("  ({})  {:?}", i + 1, icon_effect);
+        }
+        let effect_number = self.prompt_for_number("Choose an effect: ", 1..=icon_effects.len());
+        icon_effects[effect_number - 1]
+    }
 }
 
 fn style_person_slot(slot: &Option<Person>) -> StyledString {

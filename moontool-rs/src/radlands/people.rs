@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use crate::radlands::choices::IconEffectChoice;
+
 use super::abilities::*;
 use super::choices::ChoiceFuture;
 use super::locations::PlayLocation;
@@ -223,7 +225,6 @@ pub fn get_person_types() -> Vec<PersonType> {
                                 Ok(card_type) => card_type,
                                 Err(game_result) => return Some(Err(game_result)),
                             };
-                            println!("Scientist ability drew {}", card_type.styled_name()); // TODO: debug
 
                             // discard the card
                             game_view.game_state.discard.push(card_type);
@@ -239,7 +240,12 @@ pub fn get_person_types() -> Vec<PersonType> {
                         .collect::<Result<_, GameResult>>()?;
 
                     // ask the player which junk effect to use (if any)
-                    todo!();
+                    if junk_effects.is_empty() {
+                        Ok(game_view.immediate_future())
+                    } else {
+                        let junk_effects: Vec<IconEffect> = junk_effects.into_iter().collect();
+                        Ok(IconEffectChoice::future(game_view.player, junk_effects))
+                    }
                 };
             }],
         },

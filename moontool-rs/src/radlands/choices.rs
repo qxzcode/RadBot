@@ -12,7 +12,7 @@ pub enum Choice<'ctype> {
     PlayLoc(PlayChoice<'ctype>),
     Damage(DamageChoice<'ctype>),
     Restore(RestoreChoice<'ctype>),
-    IconEffect(Vec<IconEffect>), // only used for Scientist's ability
+    IconEffect(IconEffectChoice<'ctype>), // only used for Scientist's ability
 }
 
 impl<'ctype> Choice<'ctype> {
@@ -286,7 +286,7 @@ impl<'g, 'ctype: 'g> RestoreChoice<'ctype> {
         &self.locations
     }
 
-    /// Creates a new future that asks the player to damage a card before resolving.
+    /// Creates a new future that asks the player to restore a card before resolving.
     pub fn future(chooser: Player, locations: Vec<PlayerCardLocation>) -> ChoiceFuture<'g, 'ctype> {
         ChoiceFuture {
             choice_builder: Box::new(move |callback| {
@@ -312,5 +312,51 @@ impl<'g, 'ctype: 'g> RestoreChoice<'ctype> {
 
         // advance the game state until the next choice
         (self.then)(game_state, ())
+    }
+}
+
+pub struct IconEffectChoice<'ctype> {
+    /// The player that must choose an icon effect to perform.
+    chooser: Player,
+    /// The icon effects that can be performed.
+    icon_effects: Vec<IconEffect>,
+    /// A callback for what to do after the player has chosen and the icon effect has been performed.
+    then: Rc<dyn Fn(&mut GameState<'ctype>, ()) -> Result<Choice<'ctype>, GameResult> + 'ctype>,
+}
+
+impl<'g, 'ctype: 'g> IconEffectChoice<'ctype> {
+    /// Returns the player who must choose an icon effect to perform.
+    pub fn chooser(&self) -> Player {
+        self.chooser
+    }
+
+    /// Returns the set of possible icon effects to perform.
+    pub fn icon_effects(&self) -> &[IconEffect] {
+        &self.icon_effects
+    }
+
+    /// Creates a new future that asks the player to perform an icon effect before resolving.
+    pub fn future(chooser: Player, icon_effects: Vec<IconEffect>) -> ChoiceFuture<'g, 'ctype> {
+        assert!(!icon_effects.is_empty(), "icon_effects must not be empty");
+        ChoiceFuture {
+            choice_builder: Box::new(move |callback| {
+                Ok(Choice::IconEffect(IconEffectChoice {
+                    chooser,
+                    icon_effects,
+                    then: callback,
+                }))
+            }),
+        }
+    }
+
+    /// Chooses the given icon effect to perform, updating the game state and returning the next Choice.
+    pub fn choose(
+        &self,
+        game_state: &'g mut GameState<'ctype>,
+        icon_effect: IconEffect,
+    ) -> Result<Choice<'ctype>, GameResult> {
+        // perform the icon effect
+        let future = icon_effect.perform(game_state.view_for(self.chooser))?;
+        (future.choice_builder)(self.then.clone())
     }
 }
