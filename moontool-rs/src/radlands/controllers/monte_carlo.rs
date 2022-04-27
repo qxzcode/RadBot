@@ -67,7 +67,7 @@ fn print_choice_stats<C>(
             win_rate_str = win_rate_str.bold().yellow().to_string();
         }
         println!(
-            "{:6}  {}  <- win rate for: {}",
+            "{:6}  {}   {}",
             choice_stats.num_rollouts,
             win_rate_str,
             format_choice(choice_stats.choice),
