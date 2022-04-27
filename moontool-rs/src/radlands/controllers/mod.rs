@@ -1,7 +1,9 @@
 pub mod human;
+pub mod monte_carlo;
 pub mod random;
 
 use super::*;
+use crate::choices::*;
 
 /// Trait for a player controller.
 /// All functions take a GameView for the player that this controller is responsible for.
@@ -9,12 +11,14 @@ pub trait PlayerController {
     fn choose_action<'a, 'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
+        choice: &ActionChoice<'ctype>,
         actions: &'a [Action<'ctype>],
     ) -> &'a Action<'ctype>;
 
     fn choose_play_location<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
+        choice: &PlayChoice<'ctype>,
         person: &Person<'ctype>,
         locations: &[PlayLocation],
     ) -> PlayLocation;
@@ -22,6 +26,7 @@ pub trait PlayerController {
     fn choose_card_to_damage<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
+        choice: &DamageChoice<'ctype>,
         destroy: bool,
         target_locs: &[CardLocation],
     ) -> CardLocation;
@@ -29,12 +34,14 @@ pub trait PlayerController {
     fn choose_card_to_restore<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
+        choice: &RestoreChoice<'ctype>,
         target_locs: &[PlayerCardLocation],
     ) -> PlayerCardLocation;
 
     fn choose_icon_effect<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
+        choice: &IconEffectChoice<'ctype>,
         icon_effects: &[IconEffect],
     ) -> IconEffect;
 }

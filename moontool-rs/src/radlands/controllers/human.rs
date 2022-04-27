@@ -4,6 +4,7 @@ use std::io::Write;
 use std::ops::RangeBounds;
 use std::str::FromStr;
 
+use crate::radlands::choices::*;
 use crate::radlands::*;
 
 /// A `PlayerController` that allows manual, human input.
@@ -40,6 +41,7 @@ impl PlayerController for HumanController {
     fn choose_action<'a, 'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
+        _choice: &ActionChoice<'ctype>,
         actions: &'a [Action<'ctype>],
     ) -> &'a Action<'ctype> {
         // print the game state
@@ -59,6 +61,7 @@ impl PlayerController for HumanController {
     fn choose_play_location<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
+        _choice: &PlayChoice<'ctype>,
         person: &Person<'ctype>,
         locations: &[PlayLocation],
     ) -> PlayLocation {
@@ -89,6 +92,7 @@ impl PlayerController for HumanController {
     fn choose_card_to_damage<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
+        _choice: &DamageChoice<'ctype>,
         destroy: bool,
         target_locs: &[CardLocation],
     ) -> CardLocation {
@@ -104,6 +108,7 @@ impl PlayerController for HumanController {
     fn choose_card_to_restore<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
+        _choice: &RestoreChoice<'ctype>,
         target_locs: &[PlayerCardLocation],
     ) -> PlayerCardLocation {
         print_player_card_selection(game_view.game_state, game_view.player, target_locs);
@@ -115,6 +120,7 @@ impl PlayerController for HumanController {
     fn choose_icon_effect<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         _game_view: &'v GameView<'g, 'ctype>,
+        _choice: &IconEffectChoice<'ctype>,
         icon_effects: &[IconEffect],
     ) -> IconEffect {
         for (i, icon_effect) in icon_effects.iter().enumerate() {
