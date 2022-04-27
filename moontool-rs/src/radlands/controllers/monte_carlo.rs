@@ -5,6 +5,7 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use std::fmt;
 use std::io::stdout;
+use std::time::{Duration, Instant};
 
 use crate::play_to_end;
 use crate::radlands::choices::*;
@@ -131,6 +132,7 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> MonteCarloContr
         if !QUIET {
             print_choice_stats(&choice_stats_vec, &format_choice, true);
         }
+        let mut last_print_time = Instant::now();
         for rollout_num in (choices.len() + 1)..=self.num_simulations {
             // choose a choice to simulate using UCB1
             let choice_stats = choice_stats_vec
@@ -144,8 +146,11 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> MonteCarloContr
                 self.compute_rollout_score(game_view.game_state, &choose_func, choice_stats.choice);
 
             // update the live stats display
-            if !QUIET && rollout_num % 500 == 0 {
+            let now = Instant::now();
+            let elapsed = now.duration_since(last_print_time);
+            if !QUIET && elapsed > Duration::from_millis(100) {
                 print_choice_stats(&choice_stats_vec, &format_choice, false);
+                last_print_time = now;
             }
         }
         if !QUIET {
