@@ -1,6 +1,10 @@
+use crossterm::style::Stylize;
+use crossterm::{cursor, QueueableCommand};
+use ordered_float::NotNan;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use std::fmt;
+use std::io::stdout;
 
 use crate::play_to_end;
 use crate::radlands::choices::*;
@@ -16,6 +20,52 @@ fn randomize_unobserved<'g, 'ctype: 'g>(game_state: &'g GameState<'ctype>) -> Ga
     // TODO: shuffle all unobserved cards (deck, other player's hand, punks)
 
     new_game_state
+}
+
+struct ChoiceStats<'c, C> {
+    choice: &'c C,
+    num_rollouts: u32,
+    total_score: u32,
+}
+
+impl<'c, C> ChoiceStats<'c, C> {
+    fn win_rate(&self) -> NotNan<f64> {
+        let win_rate = (self.total_score as f64) / ((self.num_rollouts * 2) as f64);
+        NotNan::new(win_rate).expect("win rate is NaN")
+    }
+}
+
+fn print_choice_stats<C>(
+    choice_stats_vec: &[ChoiceStats<C>],
+    format_choice: impl Fn(&C) -> String,
+    is_first_print: bool,
+) {
+    let mut stdout = stdout();
+
+    if !is_first_print {
+        let num_lines = choice_stats_vec.len().try_into().unwrap();
+        stdout.queue(cursor::MoveToPreviousLine(num_lines)).unwrap();
+    }
+
+    let max_win_rate = choice_stats_vec
+        .iter()
+        .map(|choice_stats| choice_stats.win_rate())
+        .max()
+        .expect("choice_stats_vec is empty");
+
+    for choice_stats in choice_stats_vec {
+        let win_rate = choice_stats.win_rate();
+        let mut win_rate_str = format!("{:6.2}%", win_rate * 100.0);
+        if win_rate == max_win_rate {
+            win_rate_str = win_rate_str.bold().yellow().to_string();
+        }
+        println!(
+            "{:6}  {}  <- win rate for: {}",
+            choice_stats.num_rollouts,
+            win_rate_str,
+            format_choice(choice_stats.choice),
+        );
+    }
 }
 
 pub struct MonteCarloController<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool = false>
@@ -63,39 +113,63 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> MonteCarloContr
             return &choices[0];
         }
 
-        choices
+        let mut choice_stats_vec = choices
             .iter()
-            .max_by_key(|choice| {
-                // compute the win rate of this choice
-                let sum_scores: u32 = (0..self.num_simulations)
-                    .map(|_| {
-                        let mut game_state = randomize_unobserved(game_view.game_state);
-
-                        let game_result = match choose_func(&mut game_state, choice) {
-                            Err(game_result) => game_result,
-                            Ok(choice) => play_to_end(
-                                &mut game_state,
-                                choice,
-                                &(self.make_rollout_controller)(Player::Player1),
-                                &(self.make_rollout_controller)(Player::Player2),
-                            ),
-                        };
-
-                        self.get_score(game_result)
-                    })
-                    .sum();
-
-                if !QUIET {
-                    println!(
-                        "{:6.2}%  <- win rate for: {}",
-                        (sum_scores as f64) / ((self.num_simulations * 2) as f64) * 100.0,
-                        format_choice(choice),
-                    );
-                }
-
-                sum_scores
+            .map(|choice| ChoiceStats {
+                choice,
+                num_rollouts: 1,
+                total_score: self.compute_rollout_score(game_view.game_state, &choose_func, choice),
             })
-            .expect("choices is empty")
+            .collect::<Vec<_>>();
+
+        if !QUIET {
+            print_choice_stats(&choice_stats_vec, &format_choice, true);
+        }
+        for rollout_num in (choices.len() + 1)..=self.num_simulations {
+            // choose a choice to simulate
+            let choice_stats = choice_stats_vec.choose_mut(&mut thread_rng()).unwrap();
+
+            // perform a rollout for that choice
+            choice_stats.num_rollouts += 1;
+            choice_stats.total_score +=
+                self.compute_rollout_score(game_view.game_state, &choose_func, choice_stats.choice);
+
+            // update the live stats display
+            if !QUIET && rollout_num % 500 == 0 {
+                print_choice_stats(&choice_stats_vec, &format_choice, false);
+            }
+        }
+        if !QUIET {
+            print_choice_stats(&choice_stats_vec, &format_choice, false);
+        }
+
+        // TODO: if multiple choices have the same win rate, choose one at random
+        choice_stats_vec
+            .into_iter()
+            .max_by_key(|choice_stats| choice_stats.win_rate())
+            .expect("choice_stats_vec is empty")
+            .choice
+    }
+
+    fn compute_rollout_score<'ctype, T>(
+        &self,
+        game_state: &GameState<'ctype>,
+        choose_func: impl Fn(&mut GameState<'ctype>, &T) -> Result<Choice<'ctype>, GameResult>,
+        choice: &T,
+    ) -> u32 {
+        let mut game_state = randomize_unobserved(game_state);
+
+        let game_result = match choose_func(&mut game_state, choice) {
+            Err(game_result) => game_result,
+            Ok(choice) => play_to_end(
+                &mut game_state,
+                choice,
+                &(self.make_rollout_controller)(Player::Player1),
+                &(self.make_rollout_controller)(Player::Player2),
+            ),
+        };
+
+        self.get_score(game_result)
     }
 }
 
