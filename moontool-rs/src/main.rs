@@ -38,8 +38,10 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType], random: bool, h
         p1 = &RandomController { quiet: false };
         p2 = &RandomController { quiet: false };
     } else if hvm {
-        p1 = &MonteCarloController {
+        p1 = &MonteCarloController::<_, _, false> {
             player: Player::Player1,
+            num_simulations: 50_000,
+            make_rollout_controller: |_| RandomController { quiet: true },
         };
         p2 = &HumanController { label: "Human" };
     } else {
@@ -60,27 +62,10 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType], random: bool, h
         }
     );
 
-    // let mut final_turn = None;
-    // for turn_num in 1.. {
-    //     println!("\nTurn {}\n", turn_num);
-    //     if let Err(result) = game_state.do_turn(p1, p2, turn_num == 1) {
-    //         println!(
-    //             "\nGame ended; {}",
-    //             match result {
-    //                 GameResult::P1Wins => "player 1 wins!",
-    //                 GameResult::P2Wins => "player 2 wins!",
-    //                 GameResult::Tie => "tie!",
-    //             }
-    //         );
-    //         final_turn = Some(turn_num);
-    //         break;
-    //     }
-    // }
-
     println!("\nFinal state:\n{}", game_state);
 
-    // final_turn.unwrap()
-    todo!("get the final turn number")
+    // TODO: get the final turn number
+    0
 }
 
 pub fn play_to_end<'ctype>(

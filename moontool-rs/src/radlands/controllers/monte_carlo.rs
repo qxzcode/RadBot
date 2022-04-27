@@ -6,8 +6,6 @@ use crate::play_to_end;
 use crate::radlands::choices::*;
 use crate::radlands::*;
 
-use super::random::RandomController;
-
 fn randomize_unobserved<'g, 'ctype: 'g>(game_state: &'g GameState<'ctype>) -> GameState<'ctype> {
     let mut rng = thread_rng();
     let mut new_game_state = game_state.clone();
@@ -20,11 +18,14 @@ fn randomize_unobserved<'g, 'ctype: 'g>(game_state: &'g GameState<'ctype>) -> Ga
     new_game_state
 }
 
-pub struct MonteCarloController {
+pub struct MonteCarloController<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool = false>
+{
     pub player: Player,
+    pub num_simulations: usize,
+    pub make_rollout_controller: F,
 }
 
-impl MonteCarloController {
+impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> MonteCarloController<C, F, QUIET> {
     fn get_score(&self, game_result: GameResult) -> u32 {
         // TODO: this returns the score for player 1
         match game_result {
@@ -66,8 +67,7 @@ impl MonteCarloController {
             .iter()
             .max_by_key(|choice| {
                 // compute the win rate of this choice
-                let num_games = 50000;
-                let sum_scores: u32 = (0..num_games)
+                let sum_scores: u32 = (0..self.num_simulations)
                     .map(|_| {
                         let mut game_state = randomize_unobserved(game_view.game_state);
 
@@ -76,8 +76,8 @@ impl MonteCarloController {
                             Ok(choice) => play_to_end(
                                 &mut game_state,
                                 choice,
-                                &RandomController { quiet: true },
-                                &RandomController { quiet: true },
+                                &(self.make_rollout_controller)(Player::Player1),
+                                &(self.make_rollout_controller)(Player::Player2),
                             ),
                         };
 
@@ -85,11 +85,13 @@ impl MonteCarloController {
                     })
                     .sum();
 
-                println!(
-                    "{:.2}%  <- win rate for: {}",
-                    (sum_scores as f64) / ((num_games * 2) as f64) * 100.0,
-                    format_choice(choice),
-                );
+                if !QUIET {
+                    println!(
+                        "{:6.2}%  <- win rate for: {}",
+                        (sum_scores as f64) / ((self.num_simulations * 2) as f64) * 100.0,
+                        format_choice(choice),
+                    );
+                }
 
                 sum_scores
             })
@@ -97,23 +99,30 @@ impl MonteCarloController {
     }
 }
 
-impl PlayerController for MonteCarloController {
+impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> PlayerController
+    for MonteCarloController<C, F, QUIET>
+{
     fn choose_action<'a, 'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
         choice: &ActionChoice<'ctype>,
         actions: &'a [Action<'ctype>],
     ) -> &'a Action<'ctype> {
+        if !QUIET {
+            println!("\nBoard state:\n{}", game_view.game_state);
+        }
         let chosen_action = self.monte_carlo_choose_impl(
             game_view,
             |game_state, action| choice.choose(game_state, action),
             actions,
             |action| action.format(game_view),
         );
-        println!(
-            "{BOLD}{self:?} chose action:{RESET} {}",
-            chosen_action.format(game_view)
-        );
+        if !QUIET {
+            println!(
+                "{BOLD}{self:?} chose action:{RESET} {}",
+                chosen_action.format(game_view)
+            );
+        }
         chosen_action
     }
 
@@ -129,7 +138,9 @@ impl PlayerController for MonteCarloController {
             |game_state, location| choice.choose(game_state, *location),
             locations,
         );
-        println!("{BOLD}{self:?} chose location:{RESET} {chosen_location:?}");
+        if !QUIET {
+            println!("{BOLD}{self:?} chose location:{RESET} {chosen_location:?}");
+        }
         *chosen_location
     }
 
@@ -146,7 +157,9 @@ impl PlayerController for MonteCarloController {
             target_locs,
         );
         let verb = if destroy { "destroy" } else { "damage" };
-        println!("{BOLD}{self:?} chose {verb} target:{RESET} {chosen_target:?}");
+        if !QUIET {
+            println!("{BOLD}{self:?} chose {verb} target:{RESET} {chosen_target:?}");
+        }
         *chosen_target
     }
 
@@ -161,7 +174,9 @@ impl PlayerController for MonteCarloController {
             |game_state, target_loc| choice.choose(game_state, *target_loc),
             target_locs,
         );
-        println!("{BOLD}{self:?} chose restore target:{RESET} {chosen_target:?}");
+        if !QUIET {
+            println!("{BOLD}{self:?} chose restore target:{RESET} {chosen_target:?}");
+        }
         *chosen_target
     }
 
@@ -176,12 +191,16 @@ impl PlayerController for MonteCarloController {
             |game_state, icon_effect| choice.choose(game_state, *icon_effect),
             icon_effects,
         );
-        println!("{BOLD}{self:?} chose icon effect:{RESET} {chosen_icon_effect:?}");
+        if !QUIET {
+            println!("{BOLD}{self:?} chose icon effect:{RESET} {chosen_icon_effect:?}");
+        }
         *chosen_icon_effect
     }
 }
 
-impl fmt::Debug for MonteCarloController {
+impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> fmt::Debug
+    for MonteCarloController<C, F, QUIET>
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "MonteCarloController[{:?}]", self.player)
     }
