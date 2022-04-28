@@ -43,5 +43,11 @@ pub trait PlayerController {
         game_view: &'v GameView<'g, 'ctype>,
         choice: &IconEffectChoice<'ctype>,
         icon_effects: &[IconEffect],
-    ) -> IconEffect;
+    ) -> Option<IconEffect>;
+}
+
+/// Converts a slice of IconEffects into a slice of Option<IconEffect> that includes None.
+pub fn icon_effects_with_none(icon_effects: &[IconEffect]) -> Vec<Option<IconEffect>> {
+    let icon_effects = icon_effects.iter().map(|icon_effect| Some(*icon_effect));
+    [None].into_iter().chain(icon_effects).collect()
 }

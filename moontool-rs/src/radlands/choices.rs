@@ -336,6 +336,7 @@ impl<'g, 'ctype: 'g> IconEffectChoice<'ctype> {
     }
 
     /// Creates a new future that asks the player to perform an icon effect before resolving.
+    /// The player may also choose not to perform an icon effect.
     pub fn future(chooser: Player, icon_effects: Vec<IconEffect>) -> ChoiceFuture<'g, 'ctype> {
         assert!(!icon_effects.is_empty(), "icon_effects must not be empty");
         ChoiceFuture {
@@ -349,14 +350,20 @@ impl<'g, 'ctype: 'g> IconEffectChoice<'ctype> {
         }
     }
 
-    /// Chooses the given icon effect to perform, updating the game state and returning the next Choice.
+    /// Chooses the given icon effect to perform (or None), updating the game state
+    /// and returning the next Choice.
     pub fn choose(
         &self,
         game_state: &'g mut GameState<'ctype>,
-        icon_effect: IconEffect,
+        icon_effect: Option<IconEffect>,
     ) -> Result<Choice<'ctype>, GameResult> {
-        // perform the icon effect
-        let future = icon_effect.perform(game_state.view_for(self.chooser))?;
-        (future.choice_builder)(self.then.clone())
+        if let Some(icon_effect) = icon_effect {
+            // perform the icon effect
+            let future = icon_effect.perform(game_state.view_for(self.chooser))?;
+            (future.choice_builder)(self.then.clone())
+        } else {
+            // no icon effect was chosen, so just advance the game state until the next choice
+            (self.then)(game_state, ())
+        }
     }
 }

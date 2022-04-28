@@ -84,14 +84,22 @@ impl PlayerController for RandomController {
         _game_view: &'v GameView<'g, 'ctype>,
         _choice: &IconEffectChoice<'ctype>,
         icon_effects: &[IconEffect],
-    ) -> IconEffect {
+    ) -> Option<IconEffect> {
         let mut rng = thread_rng();
-        let chosen_icon_effect = icon_effects
-            .choose(&mut rng)
-            .expect("choose_icon_effect called with empty icon_effects list");
+        let none_probability = 1.0 / ((icon_effects.len() + 1) as f64);
+        let chosen_icon_effect = if rng.gen_bool(none_probability) {
+            // choose not to perform an icon effect
+            None
+        } else {
+            // choose a random icon effect from the list
+            let effect = icon_effects
+                .choose(&mut rng)
+                .expect("choose_icon_effect called with empty icon_effects list");
+            Some(*effect)
+        };
         if !self.quiet {
             println!("{BOLD}RandomController chose icon effect:{RESET} {chosen_icon_effect:?}");
         }
-        *chosen_icon_effect
+        chosen_icon_effect
     }
 }

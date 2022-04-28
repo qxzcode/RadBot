@@ -12,6 +12,8 @@ use crate::play_to_end;
 use crate::radlands::choices::*;
 use crate::radlands::*;
 
+use super::icon_effects_with_none;
+
 fn randomize_unobserved<'g, 'ctype: 'g>(game_state: &'g GameState<'ctype>) -> GameState<'ctype> {
     let mut rng = thread_rng();
     let mut new_game_state = game_state.clone();
@@ -130,7 +132,7 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> MonteCarloContr
                 num_rollouts: 1,
                 total_score: self.compute_rollout_score(game_view.game_state, &choose_func, choice),
             })
-            .collect::<Vec<_>>();
+            .collect_vec();
 
         if !QUIET {
             print_choice_stats(&choice_stats_vec, &format_choice, true);
@@ -292,11 +294,12 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> PlayerControlle
         game_view: &'v GameView<'g, 'ctype>,
         choice: &IconEffectChoice<'ctype>,
         icon_effects: &[IconEffect],
-    ) -> IconEffect {
+    ) -> Option<IconEffect> {
+        let icon_effects = icon_effects_with_none(icon_effects);
         let chosen_icon_effect = self.monte_carlo_choose(
             game_view,
             |game_state, icon_effect| choice.choose(game_state, *icon_effect),
-            icon_effects,
+            &icon_effects,
         );
         if !QUIET {
             println!("{BOLD}{self:?} chose icon effect:{RESET} {chosen_icon_effect:?}");

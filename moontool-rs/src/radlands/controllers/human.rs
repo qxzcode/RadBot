@@ -7,6 +7,8 @@ use std::str::FromStr;
 use crate::radlands::choices::*;
 use crate::radlands::*;
 
+use super::icon_effects_with_none;
+
 /// A `PlayerController` that allows manual, human input.
 pub struct HumanController {
     pub label: &'static str,
@@ -122,9 +124,14 @@ impl PlayerController for HumanController {
         _game_view: &'v GameView<'g, 'ctype>,
         _choice: &IconEffectChoice<'ctype>,
         icon_effects: &[IconEffect],
-    ) -> IconEffect {
+    ) -> Option<IconEffect> {
+        let icon_effects = icon_effects_with_none(icon_effects);
         for (i, icon_effect) in icon_effects.iter().enumerate() {
-            println!("  ({})  {:?}", i + 1, icon_effect);
+            if let Some(icon_effect) = icon_effect {
+                println!("  ({})  {icon_effect:?}", i + 1);
+            } else {
+                println!("  ({})  <none>", i + 1);
+            }
         }
         let effect_number = self.prompt_for_number("Choose an effect: ", 1..=icon_effects.len());
         icon_effects[effect_number - 1]

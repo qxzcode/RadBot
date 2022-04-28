@@ -250,6 +250,27 @@ pub fn get_person_types() -> Vec<PersonType> {
             }],
         },
         person_type! {
+            name: "Mutant",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Injure,
+            cost: 1,
+            abilities: [ability! {
+                description => "Damage and/or Restore, then damage this card";
+                cost => 0;
+                can_perform => true;
+                perform(game_view, card_loc) => {
+                    Ok(IconEffectChoice::future(game_view.player, vec![IconEffect::Damage])
+                        .then_future_chain(move |_game_state, _| {
+                            Ok(IconEffectChoice::future(game_view.player, vec![IconEffect::Restore])
+                                .then_future(move |game_state, _| {
+                                    game_state.damage_card_at(card_loc, false, true)
+                                }))
+                        })
+                    )
+                };
+            }],
+        },
+        person_type! {
             name: "Vigilante",
             num_in_deck: 2,
             junk_effect: IconEffect::Injure,
