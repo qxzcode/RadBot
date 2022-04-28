@@ -23,7 +23,10 @@ fn main() {
     let do_random = std::env::args().any(|arg| arg == "--random");
     let do_hvm = std::env::args().any(|arg| arg == "--hvm");
 
-    let num_games = if do_random { 10_000 } else { 1 };
+    let num_games = if do_random { 100_000 } else { 1 };
+    if do_random {
+        println!("Running {} random games...", num_games);
+    }
     let sum: u32 = (0..num_games)
         .into_iter()
         .map(|_| do_game(&camp_types, &person_types, do_random, do_hvm))
@@ -37,8 +40,8 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType], random: bool, h
     let p1: Box<dyn PlayerController>;
     let p2: Box<dyn PlayerController>;
     if random {
-        p1 = Box::new(RandomController { quiet: false });
-        p2 = Box::new(RandomController { quiet: false });
+        p1 = Box::new(RandomController { quiet: true });
+        p2 = Box::new(RandomController { quiet: true });
     } else if hvm {
         p1 = Box::new(MonteCarloController::<_, _, false> {
             player: Player::Player1,
@@ -54,16 +57,18 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType], random: bool, h
     let (mut game_state, choice) = GameState::new(camp_types, person_types);
 
     let result = play_to_end(&mut game_state, choice, p1.as_ref(), p2.as_ref());
-    println!(
-        "\nGame ended; {}",
-        match result {
-            GameResult::P1Wins => "player 1 wins!",
-            GameResult::P2Wins => "player 2 wins!",
-            GameResult::Tie => "tie!",
-        }
-    );
 
-    println!("\nFinal state:\n{}", game_state);
+    if !random {
+        println!(
+            "\nGame ended; {}",
+            match result {
+                GameResult::P1Wins => "player 1 wins!",
+                GameResult::P2Wins => "player 2 wins!",
+                GameResult::Tie => "tie!",
+            }
+        );
+        println!("\nFinal state:\n{}", game_state);
+    }
 
     // TODO: get the final turn number
     0

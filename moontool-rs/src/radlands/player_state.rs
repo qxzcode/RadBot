@@ -222,7 +222,8 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
 
     /// Returns the actions that this player can take given a view for them.
     pub fn actions(&self, game_view: &'v GameView<'g, 'ctype>) -> Vec<Action<'ctype>> {
-        let mut actions = Vec::new();
+        // this is a hot function, so pre-reserve enough capacity for most cases
+        let mut actions = Vec::with_capacity(16);
 
         // actions to play or junk a card
         let can_play_person = self.has_empty_person_slot();
