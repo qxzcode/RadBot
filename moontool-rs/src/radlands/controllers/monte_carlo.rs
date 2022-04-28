@@ -3,6 +3,7 @@ use crossterm::{cursor, QueueableCommand};
 use ordered_float::NotNan;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use std::cmp::Ordering;
 use std::fmt;
 use std::io::stdout;
 use std::time::{Duration, Instant};
@@ -163,12 +164,24 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> MonteCarloContr
             print_choice_stats(&choice_stats_vec, &format_choice, false);
         }
 
-        // TODO: if multiple choices have the same win rate, choose one at random
-        choice_stats_vec
-            .into_iter()
-            .max_by_key(|choice_stats| choice_stats.win_rate())
-            .expect("choice_stats_vec is empty")
-            .choice
+        // get the choice(s) with the highest win rate
+        let mut best_win_rate = choice_stats_vec[0].win_rate();
+        let mut best_choices = vec![choice_stats_vec[0].choice];
+        for choice_stats in &choice_stats_vec[1..] {
+            let win_rate = choice_stats.win_rate();
+            match win_rate.cmp(&best_win_rate) {
+                Ordering::Equal => best_choices.push(choice_stats.choice),
+                Ordering::Greater => {
+                    best_choices.clear();
+                    best_choices.push(choice_stats.choice);
+                    best_win_rate = win_rate;
+                }
+                Ordering::Less => {}
+            }
+        }
+
+        // return a random best choice
+        best_choices.choose(&mut thread_rng()).unwrap()
     }
 
     fn compute_rollout_score<'ctype, T>(
