@@ -1,6 +1,7 @@
 mod cards;
 mod radlands;
 
+use clap::Parser;
 use std::time::Duration;
 
 use radlands::camps::CampType;
@@ -9,56 +10,89 @@ use radlands::locations::Player;
 use radlands::people::PersonType;
 use radlands::*;
 
-use crate::radlands::controllers::{
+use radlands::controllers::{
     human::HumanController, monte_carlo::MonteCarloController, random::RandomController,
     PlayerController,
 };
 
+fn validate_secs(s: &str) -> Result<(), String> {
+    let secs = s.parse::<f64>().map_err(|_| "invalid number".to_string())?;
+    if secs > 0.0 {
+        Ok(())
+    } else {
+        Err("number of seconds must be positive".to_string())
+    }
+}
+
+#[derive(Parser, Debug)]
+#[clap(
+    name = "RadBot",
+    version = env!("CARGO_PKG_VERSION"),
+    author = env!("CARGO_PKG_AUTHORS"),
+)]
+struct Args {
+    /// Play a bunch of random games to fuzz-test the game logic
+    #[clap(short, long, conflicts_with = "humans")]
+    random: bool,
+
+    /// Run a game with 2 human/manual players
+    #[clap(short, long, conflicts_with = "random")]
+    humans: bool,
+
+    /// The number of seconds the AI is allowed to think for each decision
+    #[clap(
+        short = 't', long,
+        value_name = "SECONDS",
+        default_value = "3.0",
+        validator = validate_secs,
+    )]
+    ai_time_limit: f64,
+}
+
 fn main() {
-    println!("AutoRad, version {}\n", env!("CARGO_PKG_VERSION"));
+    let args = Args::parse();
+
+    println!("RadBot, version {}\n", env!("CARGO_PKG_VERSION"));
 
     let camp_types = camps::get_camp_types();
     let person_types = people::get_person_types();
 
-    let do_random = std::env::args().any(|arg| arg == "--random");
-    let do_hvm = std::env::args().any(|arg| arg == "--hvm");
-
-    let num_games = if do_random { 100_000 } else { 1 };
-    if do_random {
+    if args.random {
+        let num_games = 100_000;
         println!("Running {} random games...", num_games);
-    }
-    let sum: u32 = (0..num_games)
-        .into_iter()
-        .map(|_| do_game(&camp_types, &person_types, do_random, do_hvm))
-        .sum();
-    if num_games > 1 {
-        println!("Average final turn: {}", (sum as f64) / (num_games as f64));
+        for _ in 0..num_games {
+            do_game(&camp_types, &person_types, &args);
+        }
+    } else {
+        do_game(&camp_types, &person_types, &args);
     }
 }
 
-fn do_game(camp_types: &[CampType], person_types: &[PersonType], random: bool, hvm: bool) -> u32 {
+fn do_game(camp_types: &[CampType], person_types: &[PersonType], args: &Args) {
     let p1: Box<dyn PlayerController>;
     let p2: Box<dyn PlayerController>;
-    if random {
+    if args.random {
         p1 = Box::new(RandomController { quiet: true });
         p2 = Box::new(RandomController { quiet: true });
-    } else if hvm {
+    } else if args.humans {
+        p1 = Box::new(HumanController { label: "Human 1" });
+        p2 = Box::new(HumanController { label: "Human 2" });
+    } else {
+        let ai_time_limit = Duration::from_secs_f64(args.ai_time_limit);
+        println!("AI time limit: {:?}", ai_time_limit);
         p1 = Box::new(MonteCarloController::<_, _, false> {
             player: Player::Player1,
-            choice_time_limit: Duration::from_secs_f64(5.0),
+            choice_time_limit: ai_time_limit,
             make_rollout_controller: |_| RandomController { quiet: true },
         });
         p2 = Box::new(HumanController { label: "Human" });
-    } else {
-        p1 = Box::new(HumanController { label: "Human 1" });
-        p2 = Box::new(HumanController { label: "Human 2" });
     }
 
     let (mut game_state, choice) = GameState::new(camp_types, person_types);
 
     let result = play_to_end(&mut game_state, choice, p1.as_ref(), p2.as_ref());
 
-    if !random {
+    if !args.random {
         println!(
             "\nGame ended; {}",
             match result {
@@ -69,9 +103,6 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType], random: bool, h
         );
         println!("\nFinal state:\n{}", game_state);
     }
-
-    // TODO: get the final turn number
-    0
 }
 
 pub fn play_to_end<'ctype>(

@@ -87,7 +87,6 @@ pub struct MonteCarloController<C: PlayerController, F: Fn(Player) -> C, const Q
 
 impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> MonteCarloController<C, F, QUIET> {
     fn get_score(&self, game_result: GameResult) -> u32 {
-        // TODO: this returns the score for player 1
         match game_result {
             GameResult::P1Wins => match self.player {
                 Player::Player1 => 2,
