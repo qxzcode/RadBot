@@ -52,7 +52,8 @@ impl PlayerController for HumanController {
         // print the available actions
         println!("Available actions:");
         for (i, action) in actions.iter().enumerate() {
-            println!("  ({})  {}", i + 1, action.format(game_view));
+            let action_num = format!("({})", i + 1);
+            println!("{action_num:>5}  {}", action.format(game_view));
         }
 
         // prompt the user for an action
