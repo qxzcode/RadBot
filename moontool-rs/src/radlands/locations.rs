@@ -8,7 +8,7 @@ use rand::Rng;
 pub struct PersonRowIndex(u8);
 
 impl PersonRowIndex {
-    pub fn as_usize(self) -> usize {
+    pub const fn as_usize(self) -> usize {
         self.0 as usize
     }
 }
@@ -25,15 +25,15 @@ impl From<usize> for PersonRowIndex {
 pub struct CardRowIndex(u8);
 
 impl CardRowIndex {
-    pub fn camp() -> Self {
+    pub const fn camp() -> Self {
         CardRowIndex(0)
     }
 
-    pub fn as_usize(self) -> usize {
+    pub const fn as_usize(self) -> usize {
         self.0 as usize
     }
 
-    pub fn to_person_index(self) -> Result<PersonRowIndex, ()> {
+    pub const fn to_person_index(self) -> Result<PersonRowIndex, ()> {
         if self.0 != 0 {
             Ok(PersonRowIndex(self.0 - 1))
         } else {
@@ -41,7 +41,7 @@ impl CardRowIndex {
         }
     }
 
-    pub fn is_camp(self) -> bool {
+    pub const fn is_camp(self) -> bool {
         self.0 == 0
     }
 }
@@ -57,7 +57,7 @@ impl From<PersonRowIndex> for CardRowIndex {
 pub struct ColumnIndex(u8);
 
 impl ColumnIndex {
-    pub fn as_usize(self) -> usize {
+    pub const fn as_usize(self) -> usize {
         self.0 as usize
     }
 }
@@ -81,17 +81,17 @@ pub struct PlayLocation {
 
 impl PlayLocation {
     /// Creates a new PlayLocation.
-    pub fn new(column: ColumnIndex, row: PersonRowIndex) -> Self {
+    pub const fn new(column: ColumnIndex, row: PersonRowIndex) -> Self {
         Self { column, row }
     }
 
     /// Returns the column.
-    pub fn column(&self) -> ColumnIndex {
+    pub const fn column(&self) -> ColumnIndex {
         self.column
     }
 
     /// Returns the row.
-    pub fn row(&self) -> PersonRowIndex {
+    pub const fn row(&self) -> PersonRowIndex {
         self.row
     }
 
@@ -113,7 +113,7 @@ pub enum Player {
 
 impl Player {
     /// Returns the other player.
-    pub fn other(self) -> Self {
+    pub const fn other(self) -> Self {
         match self {
             Self::Player1 => Self::Player2,
             Self::Player2 => Self::Player1,
@@ -121,7 +121,7 @@ impl Player {
     }
 
     /// Returns the player's number.
-    pub fn number(self) -> u8 {
+    pub const fn number(self) -> u8 {
         match self {
             Self::Player1 => 1,
             Self::Player2 => 2,
@@ -154,7 +154,7 @@ pub struct CardLocation {
 
 impl CardLocation {
     /// Creates a new CardLocation.
-    pub fn new(column: ColumnIndex, row: CardRowIndex, player: Player) -> Self {
+    pub const fn new(column: ColumnIndex, row: CardRowIndex, player: Player) -> Self {
         Self {
             column,
             row,
@@ -163,22 +163,22 @@ impl CardLocation {
     }
 
     /// Returns the column.
-    pub fn column(&self) -> ColumnIndex {
+    pub const fn column(&self) -> ColumnIndex {
         self.column
     }
 
     /// Returns the row.
-    pub fn row(&self) -> CardRowIndex {
+    pub const fn row(&self) -> CardRowIndex {
         self.row
     }
 
     /// Returns the player whose board the card is on.
-    pub fn player(&self) -> Player {
+    pub const fn player(&self) -> Player {
         self.player
     }
 
     /// Converts the location to a PlayerCardLocation by removing the player field.
-    pub fn player_loc(self) -> PlayerCardLocation {
+    pub const fn player_loc(self) -> PlayerCardLocation {
         PlayerCardLocation::new(self.column, self.row)
     }
 }
@@ -195,22 +195,22 @@ pub struct PlayerCardLocation {
 
 impl PlayerCardLocation {
     /// Creates a new PlayerCardLocation.
-    pub fn new(column: ColumnIndex, row: CardRowIndex) -> Self {
+    pub const fn new(column: ColumnIndex, row: CardRowIndex) -> Self {
         Self { column, row }
     }
 
     /// Returns the column.
-    pub fn column(&self) -> ColumnIndex {
+    pub const fn column(&self) -> ColumnIndex {
         self.column
     }
 
     /// Returns the row.
-    pub fn row(&self) -> CardRowIndex {
+    pub const fn row(&self) -> CardRowIndex {
         self.row
     }
 
     /// Converts the location to a location on the specified player's board.
-    pub fn for_player(&self, player: Player) -> CardLocation {
+    pub const fn for_player(&self, player: Player) -> CardLocation {
         CardLocation::new(self.column, self.row, player)
     }
 }

@@ -480,6 +480,20 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
         self.choose_and_damage_card(target_locs)
     }
 
+    /// Has this player damage an unprotected opponent camp.
+    pub fn damage_unprotected_camp(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
+        // get all possible targets
+        let target_locs = self
+            .other_state()
+            .unprotected_card_locs()
+            .filter(|loc| loc.row().is_camp())
+            .map(|loc| loc.for_player(self.player.other()))
+            .collect_vec();
+
+        // ask the player to damage one of them
+        self.choose_and_damage_card(target_locs)
+    }
+
     /// Has this player injure an unprotected opponent person.
     /// Assumes that the opponent has at least one person.
     pub fn injure_enemy(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {

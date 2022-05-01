@@ -315,6 +315,21 @@ pub fn get_person_types() -> Vec<PersonType> {
             }],
         },
         person_type! {
+            name: "Pyromaniac",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Injure,
+            cost: 1,
+            abilities: [ability! {
+                description => "Damage an unprotected (opponent) camp";
+                cost => 1;
+                can_perform(game_view) => {
+                    // can perform if the opponent has an unprotected camp
+                    game_view.other_state().unprotected_card_locs().any(|loc| loc.row().is_camp())
+                };
+                perform(game_view) => Ok(game_view.damage_unprotected_camp().ignore_result());
+            }],
+        },
+        person_type! {
             name: "Scout",
             num_in_deck: 2,
             junk_effect: IconEffect::Water,
