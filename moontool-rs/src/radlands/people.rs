@@ -303,6 +303,18 @@ pub fn get_person_types() -> Vec<PersonType> {
             },
         },
         person_type! {
+            name: "Assassin",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Raid,
+            cost: 1,
+            abilities: [ability! {
+                description => "Destroy an unprotected (opponent) person";
+                cost => 2;
+                can_perform(game_view) => IconEffect::Injure.can_perform(game_view);
+                perform(game_view) => Ok(game_view.destroy_enemy().ignore_result());
+            }],
+        },
+        person_type! {
             name: "Scout",
             num_in_deck: 2,
             junk_effect: IconEffect::Water,

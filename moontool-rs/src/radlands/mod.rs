@@ -483,30 +483,28 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
     /// Has this player injure an unprotected opponent person.
     /// Assumes that the opponent has at least one person.
     pub fn injure_enemy(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
-        // get all possible targets
-        let target_locs = self
-            .other_state()
-            .unprotected_person_locs()
-            .map(|loc| loc.for_player(self.player.other()))
-            .collect_vec();
+        self.choose_and_damage_card(self.unprotected_enemies_vec())
+    }
 
-        // ask the player to injure one of them
-        self.choose_and_damage_card(target_locs)
+    /// Has this player destroy an unprotected opponent person.
+    /// Assumes that the opponent has at least one person.
+    pub fn destroy_enemy(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
+        self.choose_and_destroy_card(self.unprotected_enemies_vec())
     }
 
     /// Injures all unprotected opponent people.
     pub fn injure_all_unprotected_enemies(&mut self) {
-        // get all possible targets
-        let target_locs = self
-            .other_state()
+        self.game_state
+            .damage_cards_at(self.unprotected_enemies_vec(), false)
+            .expect("injure_all_unprotected_enemies should not end the game");
+    }
+
+    /// Returns a Vec of the locations of all unprotected opponent people.
+    fn unprotected_enemies_vec(&self) -> Vec<CardLocation> {
+        self.other_state()
             .unprotected_person_locs()
             .map(|loc| loc.for_player(self.player.other()))
-            .collect_vec();
-
-        // injure all of them
-        self.game_state
-            .damage_cards_at(target_locs, false)
-            .expect("injure_all_unprotected_enemies should not end the game");
+            .collect()
     }
 
     /// Has this player choose and then damage a card from a given list of locations.
