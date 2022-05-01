@@ -455,7 +455,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
 
     /// Has this player damage an unprotected opponent card.
     /// Returns the location of the card that was damaged.
-    pub fn damage_enemy(&mut self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
+    pub fn damage_enemy(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
         // get all possible targets
         let target_locs = self
             .other_state()
@@ -482,7 +482,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
 
     /// Has this player injure an unprotected opponent person.
     /// Assumes that the opponent has at least one person.
-    pub fn injure_enemy(&mut self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
+    pub fn injure_enemy(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
         // get all possible targets
         let target_locs = self
             .other_state()

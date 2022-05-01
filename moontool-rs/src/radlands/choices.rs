@@ -195,7 +195,7 @@ impl<'g, 'ctype: 'g> PlayChoice<'ctype> {
         // activate any "when this card enters play" effect of the person
         if let Person::NonPunk { person_type, .. } = col.person_slots[row_index].as_ref().unwrap() {
             if let Some(on_enter_play) = person_type.on_enter_play {
-                let future = on_enter_play(view, play_loc);
+                let future = on_enter_play(view, play_loc)?;
                 return (future.choice_builder)(self.then.clone());
             }
         }

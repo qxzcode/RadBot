@@ -6,11 +6,13 @@ use super::abilities::*;
 use super::choices::ChoiceFuture;
 use super::locations::PlayLocation;
 use super::styles::*;
-use super::{GameView, IconEffect};
+use super::{GameResult, GameView, IconEffect};
 
 /// Type alias for on_enter_play handler functions.
-type OnEnterPlayHandler =
-    for<'g, 'ctype> fn(GameView<'g, 'ctype>, PlayLocation) -> ChoiceFuture<'g, 'ctype>;
+type OnEnterPlayHandler = for<'g, 'ctype> fn(
+    GameView<'g, 'ctype>,
+    PlayLocation,
+) -> Result<ChoiceFuture<'g, 'ctype>, GameResult>;
 
 /// Enum for identifying "special" people that require special handling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -149,7 +151,7 @@ pub fn get_person_types() -> Vec<PersonType> {
             abilities: [icon_ability(2, IconEffect::Restore)],
             on_enter_play(game_view) => {
                 // when this card enters play, restore
-                game_view.restore_card()
+                Ok(game_view.restore_card())
             },
         },
         person_type! {
@@ -176,7 +178,7 @@ pub fn get_person_types() -> Vec<PersonType> {
                 description => "Damage; if this hits a camp, draw";
                 cost => 2;
                 can_perform => true;
-                perform(mut game_view) => {
+                perform(game_view) => {
                     let player = game_view.player;
                     Ok(game_view.damage_enemy().then_future(move |game_state, damaged_loc| {
                         if damaged_loc.row().is_camp() {
@@ -276,6 +278,29 @@ pub fn get_person_types() -> Vec<PersonType> {
             junk_effect: IconEffect::Injure,
             cost: 1,
             abilities: [icon_ability(1, IconEffect::Injure)],
+        },
+        // TODO: Rescue Team
+        person_type! {
+            name: "Vanguard",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Raid,
+            cost: 1,
+            abilities: [ability! {
+                description => "Damage, then opponent does damage back to you";
+                cost => 1;
+                can_perform => true;
+                perform(game_view) => {
+                    let player = game_view.player;
+                    Ok(game_view.damage_enemy().then_future_chain(move |game_state, _| {
+                        let opponent_view = game_state.view_for(player.other());
+                        Ok(opponent_view.damage_enemy().ignore_result())
+                    }))
+                };
+            }],
+            on_enter_play(game_view) => {
+                // when this card enters play, punk
+                game_view.gain_punk()
+            },
         },
         person_type! {
             name: "Scout",
