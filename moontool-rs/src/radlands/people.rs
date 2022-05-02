@@ -64,6 +64,9 @@ macro_rules! on_enter_play {
     (($game_view:ident, $play_loc:ident) => $on_enter_play:expr) => {
         Some(|$game_view, $play_loc| $on_enter_play)
     };
+    ((mut $game_view:ident, $play_loc:ident) => $on_enter_play:expr) => {
+        Some(|mut $game_view, $play_loc| $on_enter_play)
+    };
 }
 
 macro_rules! special_type {
@@ -85,7 +88,8 @@ macro_rules! person_type {
         cost: $cost:literal,
         abilities: [$($ability:expr),* $(,)?],
         $(
-            on_enter_play($($on_enter_play_param:ident),+) => $on_enter_play_expr:expr,
+            on_enter_play($($on_enter_play_param:ident $($on_enter_play_mut:ident)?),+)
+                => $on_enter_play_expr:expr,
         )?
         $(special_type: $special_type:tt,)?
     } => {
@@ -95,7 +99,9 @@ macro_rules! person_type {
             junk_effect: $junk_effect,
             cost: $cost,
             abilities: vec![$($ability),*],
-            on_enter_play: on_enter_play!($(($($on_enter_play_param),+) => $on_enter_play_expr)?),
+            on_enter_play: on_enter_play!(
+                $(($($on_enter_play_param $($on_enter_play_mut)?),+) => $on_enter_play_expr)?
+            ),
             special_type: special_type!($($special_type)?),
         }
     };
@@ -335,6 +341,23 @@ pub fn get_person_types() -> Vec<PersonType> {
             junk_effect: IconEffect::Water,
             cost: 1,
             abilities: [icon_ability(1, IconEffect::Raid)],
+        },
+        person_type! {
+            name: "Wounded Soldier",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Injure,
+            cost: 1,
+            abilities: [icon_ability(1, IconEffect::Damage)],
+            on_enter_play(mut game_view, play_loc) => {
+                // when this card enters play, draw, then damage this card
+                game_view.draw_card_into_hand()?;
+
+                let play_loc = play_loc.for_player(game_view.player);
+                game_view.game_state.damage_card_at(play_loc, false, true)
+                    .expect("Damaging Wounded Soldier should not end the game");
+
+                Ok(game_view.immediate_future())
+            },
         },
         person_type! {
             name: "Muse",

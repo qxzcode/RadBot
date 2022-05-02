@@ -782,14 +782,19 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
     pub fn format(&self, game_view: &'v GameView<'g, 'ctype>) -> String {
         match *self {
             Action::PlayPerson(card) => format!(
-                "Play {}{} (costs {WATER}{} water{RESET})",
+                "Play {}{} (costs {WATER}{} water{RESET}){}",
                 card.styled_name(),
                 if card.special_type == SpecialType::Holdout {
                     " in column without destroyed camp"
                 } else {
                     ""
                 },
-                card.cost
+                card.cost,
+                if card.on_enter_play.is_some() {
+                    " <has on-enter-play effect>"
+                } else {
+                    ""
+                },
             ),
             Action::PlayHoldout(card) => format!(
                 "Play {} in column with destroyed camp (costs {WATER}0 water{RESET})",
