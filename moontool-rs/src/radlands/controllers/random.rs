@@ -118,4 +118,20 @@ impl PlayerController for RandomController {
         }
         move_events
     }
+
+    fn choose_column_to_damage<'v, 'g: 'v, 'ctype: 'g>(
+        &self,
+        _game_view: &'v GameView<'g, 'ctype>,
+        choice: &DamageColumnChoice<'ctype>,
+    ) -> ColumnIndex {
+        let mut rng = thread_rng();
+        let chosen_column = choice
+            .columns()
+            .choose(&mut rng)
+            .expect("choose_column_to_damage called with empty columns list");
+        if !self.quiet {
+            println!("{BOLD}RandomController chose column to damage:{RESET} {chosen_column:?}");
+        }
+        *chosen_column
+    }
 }

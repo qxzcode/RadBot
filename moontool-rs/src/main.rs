@@ -174,11 +174,20 @@ fn do_one_choice<'ctype>(
             icon_effect_choice.choose(game_state, icon_effect)
         }
         Choice::MoveEvents(move_events_choice) => {
-            let move_events = get_controller_for(move_events_choice.chooser()).choose_to_move_events(
-                &game_state.view_for(move_events_choice.chooser()),
-                move_events_choice,
-            );
+            let move_events = get_controller_for(move_events_choice.chooser())
+                .choose_to_move_events(
+                    &game_state.view_for(move_events_choice.chooser()),
+                    move_events_choice,
+                );
             move_events_choice.choose(game_state, move_events)
+        }
+        Choice::DamageColumn(damage_column_choice) => {
+            let column = get_controller_for(damage_column_choice.chooser())
+                .choose_column_to_damage(
+                    &game_state.view_for(damage_column_choice.chooser()),
+                    damage_column_choice,
+                );
+            damage_column_choice.choose(game_state, column)
         }
     }
 }

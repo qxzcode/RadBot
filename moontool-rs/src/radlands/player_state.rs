@@ -45,14 +45,24 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         }
     }
 
+    /// Returns the column at the given index.
+    pub fn column(&self, index: ColumnIndex) -> &CardColumn<'ctype> {
+        &self.columns[index.as_usize()]
+    }
+
+    /// Returns the column at the given index as mutable.
+    pub fn column_mut(&mut self, index: ColumnIndex) -> &mut CardColumn<'ctype> {
+        &mut self.columns[index.as_usize()]
+    }
+
     /// Returns the person slot at the given location.
     pub fn person_slot(&self, loc: PlayLocation) -> Option<&Person<'ctype>> {
-        self.columns[loc.column().as_usize()].person_slot(loc.row())
+        self.column(loc.column()).person_slot(loc.row())
     }
 
     /// Returns the person slot at the given location as mutable.
     pub fn person_slot_mut(&mut self, loc: PlayLocation) -> Option<&mut Person<'ctype>> {
-        self.columns[loc.column().as_usize()].person_slot_mut(loc.row())
+        self.column_mut(loc.column()).person_slot_mut(loc.row())
     }
 
     /// Returns whether this player can use the raid effect to play or advance
@@ -113,14 +123,14 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
     /// Returns true if this player has no camps remaining.
     #[must_use = "if this returns true, the game must immediately end with this player losing"]
     pub fn damage_camp_at(&mut self, column_index: ColumnIndex, destroy: bool) -> bool {
-        self.columns[column_index.as_usize()].camp.damage(destroy);
+        self.column_mut(column_index).camp.damage(destroy);
         self.columns.iter().all(|c| c.camp.is_destroyed())
     }
 
     /// Restores the card at the given location.
     /// Panics if there is no card there.
     pub fn restore_card_at(&mut self, loc: PlayerCardLocation) {
-        let column = &mut self.columns[loc.column().as_usize()];
+        let column = self.column_mut(loc.column());
         match loc.row().to_person_index() {
             Ok(person_row_index) => column.person_slots[person_row_index.as_usize()]
                 .as_mut()
@@ -562,6 +572,11 @@ impl<'ctype> CardColumn<'ctype> {
                 }
             });
         camp_row.into_iter().chain(person_rows)
+    }
+
+    /// Returns whether the column is empty (no people and camp is destroyed).
+    pub fn is_empty(&self) -> bool {
+        self.camp.is_destroyed() && self.person_slots.iter().all(|slot| slot.is_none())
     }
 }
 

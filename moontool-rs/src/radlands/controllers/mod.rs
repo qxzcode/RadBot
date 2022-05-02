@@ -50,6 +50,12 @@ pub trait PlayerController {
         game_view: &'v GameView<'g, 'ctype>,
         choice: &MoveEventsChoice<'ctype>,
     ) -> bool;
+
+    fn choose_column_to_damage<'v, 'g: 'v, 'ctype: 'g>(
+        &self,
+        game_view: &'v GameView<'g, 'ctype>,
+        choice: &DamageColumnChoice<'ctype>,
+    ) -> ColumnIndex;
 }
 
 /// Converts a slice of IconEffects into a slice of Option<IconEffect> that includes None.

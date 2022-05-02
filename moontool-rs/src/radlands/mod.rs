@@ -209,7 +209,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         match loc.row().to_person_index() {
             Ok(person_row_index) => {
                 // damage the person
-                let column = &mut player_state.columns[loc.column().as_usize()];
+                let column = player_state.column_mut(loc.column());
                 let slot = &mut column.person_slots[person_row_index.as_usize()];
                 let person = slot
                     .as_mut()
@@ -786,7 +786,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                 game_view.game_state.spend_water(ability.cost(&game_view));
 
                 // mark the camp as no longer ready
-                let camp = &mut game_view.my_state_mut().columns[column_index.as_usize()].camp;
+                let camp = &mut game_view.my_state_mut().column_mut(column_index).camp;
                 camp.set_ready(false);
 
                 // perform the ability
@@ -853,9 +853,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
             Action::UseCampAbility(ability, column_index) => {
                 format!(
                     "Use {}'s ability: {} (costs {WATER}{} water{RESET})",
-                    game_view.my_state().columns[column_index.as_usize()]
-                        .camp
-                        .styled_name(),
+                    game_view.my_state().column(column_index).camp.styled_name(),
                     ability.description(),
                     ability.cost(game_view)
                 )

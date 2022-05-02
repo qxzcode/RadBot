@@ -1,5 +1,7 @@
 use std::rc::Rc;
 
+use itertools::Itertools;
+
 use super::locations::*;
 use super::player_state::Person;
 use super::{Action, GameResult, GameState, IconEffect};
@@ -14,6 +16,7 @@ pub enum Choice<'ctype> {
     Restore(RestoreChoice<'ctype>),
     IconEffect(IconEffectChoice<'ctype>), // only used for Scientist's ability
     MoveEvents(MoveEventsChoice<'ctype>), // only used for Doomsayer's on-enter-play effect
+    DamageColumn(DamageColumnChoice<'ctype>), // only used for Magnus Karv's ability
 }
 
 impl<'ctype> Choice<'ctype> {
@@ -183,9 +186,8 @@ impl<'g, 'ctype: 'g> PlayChoice<'ctype> {
         let mut view = game_state.view_for(self.chooser);
 
         // place the card onto the board
-        let col_index = play_loc.column().as_usize();
+        let col = view.my_state_mut().column_mut(play_loc.column());
         let row_index = play_loc.row().as_usize();
-        let col = &mut view.my_state_mut().columns[col_index];
         if let Some(old_person) = col.person_slots[row_index].replace(self.person.clone()) {
             // if there was a person already in the slot, move the old person to the other slot
             let other_row_index = 1 - row_index;
@@ -407,6 +409,59 @@ impl<'g, 'ctype: 'g> MoveEventsChoice<'ctype> {
                 .player_mut(self.chooser.other())
                 .move_events_back();
         }
+
+        // advance the game state until the next choice
+        (self.then)(game_state, ())
+    }
+}
+
+pub struct DamageColumnChoice<'ctype> {
+    /// The player that must choose an opponent column to damage.
+    chooser: Player,
+    /// The columns that can be damaged.
+    columns: Vec<ColumnIndex>,
+    /// A callback for what to do after the player has chosen and the cards have been damaged.
+    then: Rc<dyn Fn(&mut GameState<'ctype>, ()) -> Result<Choice<'ctype>, GameResult> + 'ctype>,
+}
+
+impl<'g, 'ctype: 'g> DamageColumnChoice<'ctype> {
+    /// Returns the player who must choose an opponent column to damage.
+    pub fn chooser(&self) -> Player {
+        self.chooser
+    }
+
+    /// Returns the set of possible columns to damage.
+    pub fn columns(&self) -> &[ColumnIndex] {
+        &self.columns
+    }
+
+    /// Creates a new future that asks the player to damage an opponent column before resolving.
+    pub fn future(chooser: Player, columns: Vec<ColumnIndex>) -> ChoiceFuture<'g, 'ctype> {
+        ChoiceFuture {
+            choice_builder: Box::new(move |callback| {
+                Ok(Choice::DamageColumn(DamageColumnChoice {
+                    chooser,
+                    columns,
+                    then: callback,
+                }))
+            }),
+        }
+    }
+
+    /// Chooses the given column to damage, updating the game state and returning the next Choice.
+    pub fn choose(
+        &self,
+        game_state: &'g mut GameState<'ctype>,
+        column: ColumnIndex,
+    ) -> Result<Choice<'ctype>, GameResult> {
+        // damage all cards in the column
+        let target_locs = game_state
+            .player(self.chooser.other())
+            .column(column)
+            .card_rows()
+            .map(|row| CardLocation::new(column, row, self.chooser.other()))
+            .collect_vec();
+        game_state.damage_cards_at(target_locs, false)?;
 
         // advance the game state until the next choice
         (self.then)(game_state, ())

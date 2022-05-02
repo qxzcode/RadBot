@@ -145,6 +145,25 @@ impl PlayerController for HumanController {
     ) -> bool {
         self.prompt_for_number("Move opponent events back 1 space? (0=no, 1=yes) ", 0..=1) == 1
     }
+
+    fn choose_column_to_damage<'v, 'g: 'v, 'ctype: 'g>(
+        &self,
+        game_view: &'v GameView<'g, 'ctype>,
+        choice: &DamageColumnChoice<'ctype>,
+    ) -> ColumnIndex {
+        print_player_card_selection(
+            game_view.game_state,
+            game_view.player.other(),
+            &choice
+                .columns()
+                .iter()
+                .map(|col| PlayerCardLocation::new(*col, CardRowIndex::camp()))
+                .collect_vec(),
+        );
+        let column_number =
+            self.prompt_for_number("Choose a column to damage: ", 1..=choice.columns().len());
+        choice.columns()[column_number - 1]
+    }
 }
 
 fn style_person_slot(slot: &Option<Person>) -> StyledString {

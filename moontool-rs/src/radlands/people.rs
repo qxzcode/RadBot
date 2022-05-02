@@ -1,8 +1,10 @@
 use std::collections::HashSet;
 use std::fmt;
 
+use itertools::Itertools;
+
 use super::abilities::*;
-use super::choices::{ChoiceFuture, IconEffectChoice, MoveEventsChoice};
+use super::choices::{ChoiceFuture, DamageColumnChoice, IconEffectChoice, MoveEventsChoice};
 use super::locations::PlayLocation;
 use super::styles::*;
 use super::{GameResult, GameView, IconEffect};
@@ -412,7 +414,24 @@ pub fn get_person_types() -> Vec<PersonType> {
             }],
         },
         // TODO: Argo Yesky
-        // TODO: Magnus Karv
+        person_type! {
+            name: "Magnus Karv",
+            num_in_deck: 1,
+            junk_effect: IconEffect::GainPunk,
+            cost: 3,
+            abilities: [ability! {
+                description => "Damage all cards in one of the opponent's columns";
+                cost => 2;
+                can_perform => true;
+                perform(game_view) => {
+                    let non_empty_cols = game_view.other_state().enumerate_columns()
+                        .filter(|(_, col)| !col.is_empty())
+                        .map(|(col_idx, _)| col_idx)
+                        .collect_vec();
+                    Ok(DamageColumnChoice::future(game_view.player, non_empty_cols))
+                };
+            }],
+        },
         // TODO: Zeto Khan
         // TODO: Karli Blaze
         // TODO: Vera Vosh

@@ -331,6 +331,22 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> PlayerControlle
         }
         move_events
     }
+
+    fn choose_column_to_damage<'v, 'g: 'v, 'ctype: 'g>(
+        &self,
+        game_view: &'v GameView<'g, 'ctype>,
+        choice: &DamageColumnChoice<'ctype>,
+    ) -> ColumnIndex {
+        let chosen_column = self.monte_carlo_choose(
+            game_view,
+            |game_state, column| choice.choose(game_state, *column),
+            choice.columns(),
+        );
+        if !QUIET {
+            println!("{BOLD}{self:?} chose column to damage column:{RESET} {chosen_column:?}");
+        }
+        *chosen_column
+    }
 }
 
 impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> fmt::Debug
