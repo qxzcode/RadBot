@@ -93,6 +93,21 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         }
     }
 
+    /// Returns whether this player has at least one event in their queue.
+    pub fn has_event(&self) -> bool {
+        self.events.iter().any(|slot| slot.is_some())
+    }
+
+    /// Moves all events in the player's queue back one slot (if possible for each event).
+    pub fn move_events_back(&mut self) {
+        for i in (0..self.events.len() - 1).rev() {
+            if self.events[i].is_some() && self.events[i + 1].is_none() {
+                // move the event from the current slot to the next slot
+                self.events[i + 1] = self.events[i].take();
+            }
+        }
+    }
+
     /// Damages the camp in the given column.
     /// Returns true if this player has no camps remaining.
     #[must_use = "if this returns true, the game must immediately end with this player losing"]

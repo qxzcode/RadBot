@@ -102,4 +102,20 @@ impl PlayerController for RandomController {
         }
         chosen_icon_effect
     }
+
+    fn choose_to_move_events<'v, 'g: 'v, 'ctype: 'g>(
+        &self,
+        _game_view: &'v GameView<'g, 'ctype>,
+        _choice: &MoveEventsChoice<'ctype>,
+    ) -> bool {
+        let mut rng = thread_rng();
+        let move_events = rng.gen();
+        if !self.quiet {
+            println!(
+                "{BOLD}RandomController chose to move events back:{RESET} {}",
+                if move_events { "yes" } else { "no" },
+            );
+        }
+        move_events
+    }
 }

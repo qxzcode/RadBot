@@ -305,6 +305,32 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> PlayerControlle
         }
         *chosen_icon_effect
     }
+
+    fn choose_to_move_events<'v, 'g: 'v, 'ctype: 'g>(
+        &self,
+        game_view: &'v GameView<'g, 'ctype>,
+        choice: &MoveEventsChoice<'ctype>,
+    ) -> bool {
+        let move_events: bool = *self.monte_carlo_choose_impl(
+            game_view,
+            |game_state, move_events| choice.choose(game_state, *move_events),
+            &[false, true],
+            |move_events| {
+                if *move_events {
+                    "move events back".to_string()
+                } else {
+                    "don't move events back".to_string()
+                }
+            },
+        );
+        if !QUIET {
+            println!(
+                "{BOLD}{self:?} chose to move events back:{RESET} {}",
+                if move_events { "yes" } else { "no" },
+            );
+        }
+        move_events
+    }
 }
 
 impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> fmt::Debug

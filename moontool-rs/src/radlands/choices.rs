@@ -13,6 +13,7 @@ pub enum Choice<'ctype> {
     Damage(DamageChoice<'ctype>),
     Restore(RestoreChoice<'ctype>),
     IconEffect(IconEffectChoice<'ctype>), // only used for Scientist's ability
+    MoveEvents(MoveEventsChoice<'ctype>), // only used for Doomsayer's on-enter-play effect
 }
 
 impl<'ctype> Choice<'ctype> {
@@ -365,5 +366,49 @@ impl<'g, 'ctype: 'g> IconEffectChoice<'ctype> {
             // no icon effect was chosen, so just advance the game state until the next choice
             (self.then)(game_state, ())
         }
+    }
+}
+
+pub struct MoveEventsChoice<'ctype> {
+    /// The player that must choose whether to move their opponent's events back 1.
+    chooser: Player,
+    /// A callback for what to do after the player has chosen and the events have been moved.
+    then: Rc<dyn Fn(&mut GameState<'ctype>, ()) -> Result<Choice<'ctype>, GameResult> + 'ctype>,
+}
+
+impl<'g, 'ctype: 'g> MoveEventsChoice<'ctype> {
+    /// Returns the player who must choose whether to move their opponent's events back 1.
+    pub fn chooser(&self) -> Player {
+        self.chooser
+    }
+
+    /// Creates a new future that asks the player whether to move their opponent's events back 1.
+    pub fn future(chooser: Player) -> ChoiceFuture<'g, 'ctype> {
+        ChoiceFuture {
+            choice_builder: Box::new(move |callback| {
+                Ok(Choice::MoveEvents(MoveEventsChoice {
+                    chooser,
+                    then: callback,
+                }))
+            }),
+        }
+    }
+
+    /// Chooses whether to move the opponent's events back 1, updating the game state
+    /// and returning the next Choice.
+    pub fn choose(
+        &self,
+        game_state: &'g mut GameState<'ctype>,
+        move_events: bool,
+    ) -> Result<Choice<'ctype>, GameResult> {
+        if move_events {
+            // move the events back 1
+            game_state
+                .player_mut(self.chooser.other())
+                .move_events_back();
+        }
+
+        // advance the game state until the next choice
+        (self.then)(game_state, ())
     }
 }

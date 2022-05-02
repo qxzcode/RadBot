@@ -1,9 +1,7 @@
 use std::collections::HashSet;
 
-use crate::radlands::choices::IconEffectChoice;
-
 use super::abilities::*;
-use super::choices::ChoiceFuture;
+use super::choices::{ChoiceFuture, IconEffectChoice, MoveEventsChoice};
 use super::locations::PlayLocation;
 use super::styles::*;
 use super::{GameResult, GameView, IconEffect};
@@ -365,6 +363,26 @@ pub fn get_person_types() -> Vec<PersonType> {
             junk_effect: IconEffect::Injure,
             cost: 1,
             abilities: [icon_ability(0, IconEffect::Water)],
+        },
+        person_type! {
+            name: "Doomsayer",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Draw,
+            cost: 1,
+            abilities: [ability! {
+                description => "(If opponent has an event in play) Damage";
+                cost => 1;
+                can_perform(game_view) => game_view.other_state().has_event();
+                perform => IconEffect::Damage;
+            }],
+            on_enter_play(game_view) => {
+                // when this card enters play, you may move all the opponent's events back 1
+                if game_view.other_state().has_event() {
+                    Ok(MoveEventsChoice::future(game_view.player))
+                } else {
+                    Ok(game_view.immediate_future())
+                }
+            },
         },
     ]
 }

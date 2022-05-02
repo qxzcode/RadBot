@@ -137,6 +137,14 @@ impl PlayerController for HumanController {
         let effect_number = self.prompt_for_number("Choose an effect: ", 1..=icon_effects.len());
         icon_effects[effect_number - 1]
     }
+
+    fn choose_to_move_events<'v, 'g: 'v, 'ctype: 'g>(
+        &self,
+        _game_view: &'v GameView<'g, 'ctype>,
+        _choice: &MoveEventsChoice<'ctype>,
+    ) -> bool {
+        self.prompt_for_number("Move opponent events back 1 space? (0=no, 1=yes) ", 0..=1) == 1
+    }
 }
 
 fn style_person_slot(slot: &Option<Person>) -> StyledString {
