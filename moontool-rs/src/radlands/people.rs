@@ -411,5 +411,22 @@ pub fn get_person_types() -> Vec<PersonType> {
                 };
             }],
         },
+        // TODO: Argo Yesky
+        // TODO: Magnus Karv
+        // TODO: Zeto Khan
+        // TODO: Karli Blaze
+        // TODO: Vera Vosh
+        person_type! {
+            name: "Molgur Stang",
+            num_in_deck: 1,
+            junk_effect: IconEffect::GainPunk,
+            cost: 4,
+            abilities: [ability! {
+                description => "Destroy any (opponent) camp";
+                cost => 1;
+                can_perform => true;
+                perform(game_view) => Ok(game_view.destroy_enemy_camp().ignore_result());
+            }],
+        },
     ]
 }

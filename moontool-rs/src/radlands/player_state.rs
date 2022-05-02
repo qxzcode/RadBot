@@ -108,11 +108,12 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         }
     }
 
-    /// Damages the camp in the given column.
+    /// Damages or destroys the camp in the given column.
+    /// If `destroy` is true, the camp is always destroyed; otherwise, it is damaged.
     /// Returns true if this player has no camps remaining.
     #[must_use = "if this returns true, the game must immediately end with this player losing"]
-    pub fn damage_camp_at(&mut self, column_index: ColumnIndex) -> bool {
-        self.columns[column_index.as_usize()].camp.damage();
+    pub fn damage_camp_at(&mut self, column_index: ColumnIndex, destroy: bool) -> bool {
+        self.columns[column_index.as_usize()].camp.damage(destroy);
         self.columns.iter().all(|c| c.camp.is_destroyed())
     }
 
@@ -213,8 +214,8 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
             .map(|(col_index, col)| (col_index.into(), col))
     }
 
-    /// Returns an iterator that enumerates the camps of this player's board with strongly-typed
-    /// locations.
+    /// Returns an iterator that enumerates the camps of this player's board (both destroyed
+    /// and non-destroyed) with strongly-typed locations.
     pub fn enumerate_camps(
         &self,
     ) -> impl Iterator<Item = (PlayerCardLocation, &Camp<'ctype>)> + '_ {
@@ -578,12 +579,19 @@ pub struct Camp<'ctype> {
 }
 
 impl Camp<'_> {
-    /// Damages the camp.
+    /// Damages or destroys the camp.
+    /// If `destroy` is true, the camp is always destroyed; otherwise, it is damaged.
     /// Does not check for win conditions; that must be done separately.
     /// Panics if the camp is already destroyed.
-    pub fn damage(&mut self) {
+    pub fn damage(&mut self, destroy: bool) {
         match self.status {
-            CampStatus::Undamaged => self.status = CampStatus::Damaged,
+            CampStatus::Undamaged => {
+                self.status = if destroy {
+                    CampStatus::Destroyed
+                } else {
+                    CampStatus::Damaged
+                };
+            }
             CampStatus::Damaged => self.status = CampStatus::Destroyed,
             CampStatus::Destroyed => panic!("Tried to damage a destroyed camp"),
         }

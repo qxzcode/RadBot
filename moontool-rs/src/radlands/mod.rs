@@ -248,8 +248,8 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                 }
             }
             Err(()) => {
-                // damage the camp in the given column and check for win condition
-                let no_camps_left = player_state.damage_camp_at(loc.column());
+                // damage/destroy the camp in the given column and check for win condition
+                let no_camps_left = player_state.damage_camp_at(loc.column(), destroy);
                 if no_camps_left {
                     return Err(match loc.player() {
                         Player::Player1 => GameResult::P2Wins,
@@ -551,6 +551,20 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
             .my_state()
             .person_locs()
             .map(|loc| loc.for_player(self.player))
+            .collect_vec();
+
+        // ask the player to destroy one of them
+        self.choose_and_destroy_card(target_locs)
+    }
+
+    /// Has this player destroy an opponent camp.
+    pub fn destroy_enemy_camp(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
+        // get all possible targets (non-destroyed camps)
+        let target_locs = self
+            .other_state()
+            .enumerate_camps()
+            .filter(|(_, camp)| !camp.is_destroyed())
+            .map(|(loc, _)| loc.for_player(self.player.other()))
             .collect_vec();
 
         // ask the player to destroy one of them
