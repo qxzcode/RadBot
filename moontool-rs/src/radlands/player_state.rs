@@ -309,16 +309,15 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
 
                         // mimic gets its abilities from other people
                         if person_type.special_type == SpecialType::Mimic {
-                            // assert that enemy people will always be either Ready or Injured
-                            // TODO: measure performance and maybe only check in debug builds
+                            // debug_assert that enemy people will always be either Ready or Injured
+                            #[cfg(debug_assertions)]
                             for other_person in game_view.other_state().people() {
-                                assert!(matches!(
-                                    other_person,
+                                #[rustfmt::skip]
+                                debug_assert!(matches!(other_person,
                                     Person::Punk { is_ready: true, .. }
-                                        | Person::NonPunk {
-                                            status: NonPunkStatus::Ready | NonPunkStatus::Injured,
-                                            ..
-                                        }
+                                    | Person::NonPunk {
+                                        status: NonPunkStatus::Ready | NonPunkStatus::Injured, ..
+                                    }
                                 ), "An enemy person was neither Ready nor Injured");
                             }
 
@@ -489,7 +488,7 @@ impl<'ctype> CardColumn<'ctype> {
 
     /// Returns whether this column has any damaged cards that can be restored.
     pub fn has_restorable_card(&self) -> bool {
-        self.camp.is_restorable() || self.people().any(|person| person.is_restorable())
+        self.camp.is_restorable() || self.people().any(|person| person.is_injured())
     }
 
     /// Returns an iterator over the locations of any damaged and restorable cards in this column.
@@ -504,7 +503,7 @@ impl<'ctype> CardColumn<'ctype> {
                 .iter()
                 .enumerate()
                 .filter_map(|(row, slot)| {
-                    if matches!(slot, Some(person) if person.is_restorable()) {
+                    if matches!(slot, Some(person) if person.is_injured()) {
                         let row: PersonRowIndex = row.into();
                         Some(row.into())
                     } else {
@@ -648,7 +647,7 @@ pub enum CampStatus {
 }
 
 /// A person played on the board (a punk or face-up person).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Person<'ctype> {
     Punk {
         /// The identity of the face-down card.
@@ -694,8 +693,8 @@ impl<'ctype> Person<'ctype> {
         }
     }
 
-    /// Returns whether this person is injured and can be restored.
-    pub fn is_restorable(&self) -> bool {
+    /// Returns whether this person is injured (and therefore can be restored).
+    pub fn is_injured(&self) -> bool {
         matches!(self, Person::NonPunk { status, .. } if *status == NonPunkStatus::Injured)
     }
 

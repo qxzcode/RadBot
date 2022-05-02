@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt;
 
 use super::abilities::*;
 use super::choices::{ChoiceFuture, IconEffectChoice, MoveEventsChoice};
@@ -43,6 +44,12 @@ pub struct PersonType {
     /// The special identity of this person type (if any). Used for people that require special
     /// handling elsewhere in the code.
     pub special_type: SpecialType,
+}
+
+impl fmt::Debug for PersonType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "PersonType[{}]", self.name)
+    }
 }
 
 impl StyledName for PersonType {
@@ -378,11 +385,31 @@ pub fn get_person_types() -> Vec<PersonType> {
             on_enter_play(game_view) => {
                 // when this card enters play, you may move all the opponent's events back 1
                 if game_view.other_state().has_event() {
+                    // the AI (and humans) pretty much always choose to move events back...
+                    // so should this even be a choice?
                     Ok(MoveEventsChoice::future(game_view.player))
                 } else {
                     Ok(game_view.immediate_future())
                 }
             },
+        },
+        person_type! {
+            name: "Exterminator",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Draw,
+            cost: 1,
+            abilities: [ability! {
+                description => "Destroy all damaged enemies";
+                cost => 1;
+                can_perform(game_view) => {
+                    // can perform if the opponent has any injured people
+                    game_view.other_state().people().any(|person| person.is_injured())
+                };
+                perform(mut game_view) => {
+                    game_view.destroy_all_injured_enemies();
+                    Ok(game_view.immediate_future())
+                };
+            }],
         },
     ]
 }

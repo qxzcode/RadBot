@@ -521,6 +521,19 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
             .collect()
     }
 
+    /// Destroys all injured opponent people.
+    pub fn destroy_all_injured_enemies(&mut self) {
+        let injured_enemy_locs = self
+            .other_state()
+            .enumerate_people()
+            .filter(|(_, person)| person.is_injured())
+            .map(|(loc, _)| loc.for_player(self.player.other()))
+            .collect_vec();
+        self.game_state
+            .damage_cards_at(injured_enemy_locs, true)
+            .expect("destroy_all_injured_enemies should not end the game");
+    }
+
     /// Has this player choose and then damage a card from a given list of locations.
     /// Returns the location of the card that was damaged.
     pub fn choose_and_damage_card(
@@ -839,7 +852,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
 }
 
 /// Enum for playable card types (people or events).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum PersonOrEventType<'ctype> {
     Person(&'ctype PersonType),
     Event(&'ctype dyn EventType),
@@ -900,7 +913,7 @@ impl PartialEq for PersonOrEventType<'_> {
 impl Eq for PersonOrEventType<'_> {}
 
 /// Trait for a type of event card.
-pub trait EventType {
+pub trait EventType: fmt::Debug {
     /// Returns the event's name.
     fn name(&self) -> &'static str;
 
@@ -982,6 +995,12 @@ impl EventType for RaidersEvent {
 
     fn as_raiders(&self) -> Option<&RaidersEvent> {
         Some(self)
+    }
+}
+
+impl fmt::Debug for RaidersEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "EventType[Raiders]")
     }
 }
 
