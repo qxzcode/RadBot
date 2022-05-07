@@ -8,74 +8,72 @@ pub struct RandomController {
     pub quiet: bool,
 }
 
+macro_rules! print_choice {
+    ($self:ident, $phrase:expr, $choice:expr, :?) => {
+        if !$self.quiet {
+            println!(
+                "{}RandomController chose {}:{} {:?}",
+                BOLD, $phrase, RESET, $choice
+            );
+        }
+    };
+    ($self:ident, $phrase:expr, $choice:expr $(,)?) => {
+        if !$self.quiet {
+            println!(
+                "{}RandomController chose {}:{} {}",
+                BOLD, $phrase, RESET, $choice
+            );
+        }
+    };
+}
+
+macro_rules! random_choose_impl {
+    (
+        $name:ident($choice:ident: $ChoiceType:ty) -> $ReturnType:ty,
+        $options:expr, $phrase:expr
+    ) => {
+        fn $name<'a, 'v, 'g: 'v, 'ctype: 'g>(
+            &self,
+            _game_view: &'v GameView<'g, 'ctype>,
+            $choice: &'a $ChoiceType,
+        ) -> $ReturnType {
+            let chosen_option = $options
+                .choose(&mut thread_rng())
+                .expect(concat!(
+                    stringify!($name), " called with empty options list"
+                ));
+            print_choice!(self, $phrase, chosen_option, :?);
+            *chosen_option
+        }
+    };
+}
+
 impl PlayerController for RandomController {
     fn choose_action<'a, 'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
         choice: &'a ActionChoice<'ctype>,
     ) -> &'a Action<'ctype> {
-        let mut rng = thread_rng();
         let chosen_action = choice
             .actions()
-            .choose(&mut rng)
+            .choose(&mut thread_rng())
             .expect("choose_action called with empty actions list");
-        if !self.quiet {
-            println!(
-                "{BOLD}RandomController chose action:{RESET} {}",
-                chosen_action.format(game_view)
-            );
-        }
+        print_choice!(self, "action", chosen_action.format(game_view));
         chosen_action
     }
 
-    fn choose_play_location<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        _game_view: &'v GameView<'g, 'ctype>,
-        choice: &PlayChoice<'ctype>,
-    ) -> PlayLocation {
-        let mut rng = thread_rng();
-        let chosen_location = choice
-            .locations()
-            .choose(&mut rng)
-            .expect("choose_play_location called with empty locations list");
-        if !self.quiet {
-            println!("{BOLD}RandomController chose location:{RESET} {chosen_location:?}");
-        }
-        *chosen_location
+    random_choose_impl! {
+        choose_play_location(choice: PlayChoice<'ctype>) -> PlayLocation,
+        choice.locations(), "play location"
     }
-
-    fn choose_card_to_damage<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        _game_view: &'v GameView<'g, 'ctype>,
-        choice: &DamageChoice<'ctype>,
-    ) -> CardLocation {
-        let mut rng = thread_rng();
-        let chosen_target = choice
-            .locations()
-            .choose(&mut rng)
-            .expect("choose_card_to_damage called with empty target_locs list");
-        if !self.quiet {
-            let destroy = choice.destroy();
-            let verb = if destroy { "destroy" } else { "damage" };
-            println!("{BOLD}RandomController chose {verb} target:{RESET} {chosen_target:?}");
-        }
-        *chosen_target
+    random_choose_impl! {
+        choose_card_to_damage(choice: DamageChoice<'ctype>) -> CardLocation,
+        choice.locations(),
+        if choice.destroy() { "destroy target" } else { "damage target" }
     }
-
-    fn choose_card_to_restore<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        _game_view: &'v GameView<'g, 'ctype>,
-        choice: &RestoreChoice<'ctype>,
-    ) -> PlayerCardLocation {
-        let mut rng = thread_rng();
-        let chosen_target = choice
-            .locations()
-            .choose(&mut rng)
-            .expect("choose_card_to_restore called with empty target_locs list");
-        if !self.quiet {
-            println!("{BOLD}RandomController chose restore target:{RESET} {chosen_target:?}");
-        }
-        *chosen_target
+    random_choose_impl! {
+        choose_card_to_restore(choice: RestoreChoice<'ctype>) -> PlayerCardLocation,
+        choice.locations(), "restore target"
     }
 
     fn choose_icon_effect<'v, 'g: 'v, 'ctype: 'g>(
@@ -97,9 +95,7 @@ impl PlayerController for RandomController {
                 .expect("choose_icon_effect called with empty icon_effects list");
             Some(*effect)
         };
-        if !self.quiet {
-            println!("{BOLD}RandomController chose icon effect:{RESET} {chosen_icon_effect:?}");
-        }
+        print_choice!(self, "icon effect", chosen_icon_effect, :?);
         chosen_icon_effect
     }
 
@@ -108,30 +104,17 @@ impl PlayerController for RandomController {
         _game_view: &'v GameView<'g, 'ctype>,
         _choice: &MoveEventsChoice<'ctype>,
     ) -> bool {
-        let mut rng = thread_rng();
-        let move_events = rng.gen();
-        if !self.quiet {
-            println!(
-                "{BOLD}RandomController chose to move events back:{RESET} {}",
-                if move_events { "yes" } else { "no" },
-            );
-        }
+        let move_events = thread_rng().gen();
+        print_choice!(
+            self,
+            "to move events back",
+            if move_events { "yes" } else { "no" },
+        );
         move_events
     }
 
-    fn choose_column_to_damage<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        _game_view: &'v GameView<'g, 'ctype>,
-        choice: &DamageColumnChoice<'ctype>,
-    ) -> ColumnIndex {
-        let mut rng = thread_rng();
-        let chosen_column = choice
-            .columns()
-            .choose(&mut rng)
-            .expect("choose_column_to_damage called with empty columns list");
-        if !self.quiet {
-            println!("{BOLD}RandomController chose column to damage:{RESET} {chosen_column:?}");
-        }
-        *chosen_column
+    random_choose_impl! {
+        choose_column_to_damage(choice: DamageColumnChoice<'ctype>) -> ColumnIndex,
+        choice.columns(), "column to damage"
     }
 }
