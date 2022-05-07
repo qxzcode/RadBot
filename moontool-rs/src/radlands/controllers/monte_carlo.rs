@@ -78,6 +78,24 @@ fn print_choice_stats<C>(
     }
 }
 
+fn get_best_choices<T>(choice_stats_vec: Vec<ChoiceStats<T>>) -> Vec<&T> {
+    let mut best_win_rate = choice_stats_vec[0].win_rate();
+    let mut best_choices = vec![choice_stats_vec[0].choice];
+    for choice_stats in &choice_stats_vec[1..] {
+        let win_rate = choice_stats.win_rate();
+        match win_rate.cmp(&best_win_rate) {
+            Ordering::Equal => best_choices.push(choice_stats.choice),
+            Ordering::Greater => {
+                best_choices.clear();
+                best_choices.push(choice_stats.choice);
+                best_win_rate = win_rate;
+            }
+            Ordering::Less => {}
+        }
+    }
+    best_choices
+}
+
 pub struct MonteCarloController<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool = false>
 {
     pub player: Player,
@@ -98,17 +116,6 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> MonteCarloContr
                 Player::Player2 => 2,
             },
         }
-    }
-
-    fn monte_carlo_choose<'c, 'v, 'g: 'v, 'ctype: 'g, T: fmt::Debug>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
-        choose_func: impl Fn(&mut GameState<'ctype>, &T) -> Result<Choice<'ctype>, GameResult>,
-        choices: &'c [T],
-    ) -> &'c T {
-        self.monte_carlo_choose_impl(game_view, choose_func, choices, |choice| {
-            format!("{:?}", choice)
-        })
     }
 
     fn monte_carlo_choose_impl<'c, 'v, 'g: 'v, 'ctype: 'g, T>(
@@ -165,24 +172,10 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> MonteCarloContr
             print_choice_stats(&choice_stats_vec, &format_choice, false);
         }
 
-        // get the choice(s) with the highest win rate
-        let mut best_win_rate = choice_stats_vec[0].win_rate();
-        let mut best_choices = vec![choice_stats_vec[0].choice];
-        for choice_stats in &choice_stats_vec[1..] {
-            let win_rate = choice_stats.win_rate();
-            match win_rate.cmp(&best_win_rate) {
-                Ordering::Equal => best_choices.push(choice_stats.choice),
-                Ordering::Greater => {
-                    best_choices.clear();
-                    best_choices.push(choice_stats.choice);
-                    best_win_rate = win_rate;
-                }
-                Ordering::Less => {}
-            }
-        }
-
-        // return a random best choice
-        best_choices.choose(&mut thread_rng()).unwrap()
+        // return a random best (maximum win rate) choice
+        get_best_choices(choice_stats_vec)
+            .choose(&mut thread_rng())
+            .unwrap()
     }
 
     fn compute_rollout_score<'ctype, T>(
@@ -207,139 +200,102 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> MonteCarloContr
     }
 }
 
+macro_rules! monte_carlo_choose_impl {
+    (
+        $name:ident($choice:ident: $ChoiceType:ty) -> $ReturnType:ty,
+        $options:expr, $phrase:expr
+    ) => {
+        monte_carlo_choose_impl! {
+            $name(game_view, $choice: $ChoiceType) -> $ReturnType,
+            {}
+            $options => chosen_option,
+            option => *option,
+            |choice| format!("{:?}", choice),
+            $phrase, ":?", chosen_option,
+            return *chosen_option
+        }
+    };
+    (
+        $name:ident($game_view:ident, $choice:ident: $ChoiceType:ty) -> $ReturnType:ty,
+        $initial_print:block
+        $options:expr => $chosen_option:ident,
+        $option:ident => $option_choose_arg:expr,
+        $format_choice:expr,
+        $phrase:expr, $option_disp_format:literal, $option_disp:expr,
+        return $return:expr
+    ) => {
+        fn $name<'a, 'v, 'g: 'v, 'ctype: 'g>(
+            &self,
+            $game_view: &'v GameView<'g, 'ctype>,
+            $choice: &'a $ChoiceType,
+        ) -> $ReturnType {
+            if !QUIET {
+                $initial_print
+            }
+            let options = $options;
+            let $chosen_option = self.monte_carlo_choose_impl(
+                $game_view,
+                |game_state, $option| $choice.choose(game_state, $option_choose_arg),
+                options,
+                $format_choice,
+            );
+            if !QUIET {
+                let phrase = $phrase;
+                print!("{BOLD}{self:?} chose {phrase}:{RESET} ");
+                println!(concat!("{", $option_disp_format, "}"), $option_disp);
+            }
+            $return
+        }
+    };
+}
+
 impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> PlayerController
     for MonteCarloController<C, F, QUIET>
 {
-    fn choose_action<'a, 'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
-        choice: &'a ActionChoice<'ctype>,
-    ) -> &'a Action<'ctype> {
-        if !QUIET {
-            println!("\nBoard state:\n{}", game_view.game_state);
-        }
-        let chosen_action = self.monte_carlo_choose_impl(
-            game_view,
-            |game_state, action| choice.choose(game_state, action),
-            choice.actions(),
-            |action| action.format(game_view),
-        );
-        if !QUIET {
-            println!(
-                "{BOLD}{self:?} chose action:{RESET} {}",
-                chosen_action.format(game_view)
-            );
-        }
-        chosen_action
+    monte_carlo_choose_impl! {
+        choose_action(game_view, choice: ActionChoice<'ctype>) -> &'a Action<'ctype>,
+        { println!("\nBoard state:\n{}", game_view.game_state) }
+        choice.actions() => chosen_action,
+        action => action,
+        |action| action.format(game_view),
+        "action", "", chosen_action.format(game_view),
+        return chosen_action
     }
-
-    fn choose_play_location<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
-        choice: &PlayChoice<'ctype>,
-    ) -> PlayLocation {
-        let chosen_location = self.monte_carlo_choose(
-            game_view,
-            |game_state, location| choice.choose(game_state, *location),
-            choice.locations(),
-        );
-        if !QUIET {
-            println!("{BOLD}{self:?} chose location:{RESET} {chosen_location:?}");
-        }
-        *chosen_location
+    monte_carlo_choose_impl! {
+        choose_play_location(choice: PlayChoice<'ctype>) -> PlayLocation,
+        choice.locations(), "play location"
     }
-
-    fn choose_card_to_damage<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
-        choice: &DamageChoice<'ctype>,
-    ) -> CardLocation {
-        let chosen_target = self.monte_carlo_choose(
-            game_view,
-            |game_state, target_loc| choice.choose(game_state, *target_loc),
-            choice.locations(),
-        );
-        if !QUIET {
-            let destroy = choice.destroy();
-            let verb = if destroy { "destroy" } else { "damage" };
-            println!("{BOLD}{self:?} chose {verb} target:{RESET} {chosen_target:?}");
-        }
-        *chosen_target
+    monte_carlo_choose_impl! {
+        choose_card_to_damage(choice: DamageChoice<'ctype>) -> CardLocation,
+        choice.locations(),
+        if choice.destroy() { "destroy target" } else { "damage target" }
     }
-
-    fn choose_card_to_restore<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
-        choice: &RestoreChoice<'ctype>,
-    ) -> PlayerCardLocation {
-        let chosen_target = self.monte_carlo_choose(
-            game_view,
-            |game_state, target_loc| choice.choose(game_state, *target_loc),
-            choice.locations(),
-        );
-        if !QUIET {
-            println!("{BOLD}{self:?} chose restore target:{RESET} {chosen_target:?}");
-        }
-        *chosen_target
+    monte_carlo_choose_impl! {
+        choose_card_to_restore(choice: RestoreChoice<'ctype>) -> PlayerCardLocation,
+        choice.locations(), "restore target"
     }
-
-    fn choose_icon_effect<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
-        choice: &IconEffectChoice<'ctype>,
-    ) -> Option<IconEffect> {
-        let icon_effects = icon_effects_with_none(choice.icon_effects());
-        let chosen_icon_effect = self.monte_carlo_choose(
-            game_view,
-            |game_state, icon_effect| choice.choose(game_state, *icon_effect),
-            &icon_effects,
-        );
-        if !QUIET {
-            println!("{BOLD}{self:?} chose icon effect:{RESET} {chosen_icon_effect:?}");
-        }
-        *chosen_icon_effect
+    monte_carlo_choose_impl! {
+        choose_icon_effect(choice: IconEffectChoice<'ctype>) -> Option<IconEffect>,
+        &icon_effects_with_none(choice.icon_effects()), "icon effect"
     }
-
-    fn choose_to_move_events<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
-        choice: &MoveEventsChoice<'ctype>,
-    ) -> bool {
-        let move_events: bool = *self.monte_carlo_choose_impl(
-            game_view,
-            |game_state, move_events| choice.choose(game_state, *move_events),
-            &[false, true],
-            |move_events| {
-                if *move_events {
-                    "move events back".to_string()
-                } else {
-                    "don't move events back".to_string()
-                }
-            },
-        );
-        if !QUIET {
-            println!(
-                "{BOLD}{self:?} chose to move events back:{RESET} {}",
-                if move_events { "yes" } else { "no" },
-            );
-        }
-        move_events
+    monte_carlo_choose_impl! {
+        choose_to_move_events(game_view, choice: MoveEventsChoice<'ctype>) -> bool,
+        {}
+        &[false, true] => move_events,
+        move_events => *move_events,
+        |move_events| {
+            if *move_events {
+                "move events back".to_string()
+            } else {
+                "don't move events back".to_string()
+            }
+        },
+        "to move events back", "", if *move_events { "yes" } else { "no" },
+        return *move_events
     }
-
-    fn choose_column_to_damage<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
-        choice: &DamageColumnChoice<'ctype>,
-    ) -> ColumnIndex {
-        let chosen_column = self.monte_carlo_choose(
-            game_view,
-            |game_state, column| choice.choose(game_state, *column),
-            choice.columns(),
-        );
-        if !QUIET {
-            println!("{BOLD}{self:?} chose column to damage column:{RESET} {chosen_column:?}");
-        }
-        *chosen_column
+    monte_carlo_choose_impl! {
+        choose_column_to_damage(choice: DamageColumnChoice<'ctype>) -> ColumnIndex,
+        choice.columns(), "column to damage"
     }
 }
 
