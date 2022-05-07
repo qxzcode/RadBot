@@ -5,50 +5,26 @@ pub mod random;
 use super::*;
 use crate::choices::*;
 
+macro_rules! choose_function {
+    ($name:ident(..., $ChoiceType:ty) -> $ReturnType:ty) => {
+        fn $name<'a, 'v, 'g: 'v, 'ctype: 'g>(
+            &self,
+            game_view: &'v GameView<'g, 'ctype>,
+            choice: &'a $ChoiceType,
+        ) -> $ReturnType;
+    };
+}
+
 /// Trait for a player controller.
 /// All functions take a GameView for the player that this controller is responsible for.
 pub trait PlayerController {
-    fn choose_action<'a, 'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
-        choice: &'a ActionChoice<'ctype>,
-    ) -> &'a Action<'ctype>;
-
-    fn choose_play_location<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
-        choice: &PlayChoice<'ctype>,
-    ) -> PlayLocation;
-
-    fn choose_card_to_damage<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
-        choice: &DamageChoice<'ctype>,
-    ) -> CardLocation;
-
-    fn choose_card_to_restore<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
-        choice: &RestoreChoice<'ctype>,
-    ) -> PlayerCardLocation;
-
-    fn choose_icon_effect<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
-        choice: &IconEffectChoice<'ctype>,
-    ) -> Option<IconEffect>;
-
-    fn choose_to_move_events<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
-        choice: &MoveEventsChoice<'ctype>,
-    ) -> bool;
-
-    fn choose_column_to_damage<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        game_view: &'v GameView<'g, 'ctype>,
-        choice: &DamageColumnChoice<'ctype>,
-    ) -> ColumnIndex;
+    choose_function!( choose_action(..., ActionChoice<'ctype>) -> &'a Action<'ctype> );
+    choose_function!( choose_play_location(..., PlayChoice<'ctype>) -> PlayLocation );
+    choose_function!( choose_card_to_damage(..., DamageChoice<'ctype>) -> CardLocation );
+    choose_function!( choose_card_to_restore(..., RestoreChoice<'ctype>) -> PlayerCardLocation );
+    choose_function!( choose_icon_effect(..., IconEffectChoice<'ctype>) -> Option<IconEffect> );
+    choose_function!( choose_to_move_events(..., MoveEventsChoice<'ctype>) -> bool );
+    choose_function!( choose_column_to_damage(..., DamageColumnChoice<'ctype>) -> ColumnIndex );
 }
 
 /// Converts a slice of IconEffects into a slice of Option<IconEffect> that includes None.
