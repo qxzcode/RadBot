@@ -11,38 +11,31 @@ pub trait PlayerController {
     fn choose_action<'a, 'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
-        choice: &ActionChoice<'ctype>,
-        actions: &'a [Action<'ctype>],
+        choice: &'a ActionChoice<'ctype>,
     ) -> &'a Action<'ctype>;
 
     fn choose_play_location<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
         choice: &PlayChoice<'ctype>,
-        person: &Person<'ctype>,
-        locations: &[PlayLocation],
     ) -> PlayLocation;
 
     fn choose_card_to_damage<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
         choice: &DamageChoice<'ctype>,
-        destroy: bool,
-        target_locs: &[CardLocation],
     ) -> CardLocation;
 
     fn choose_card_to_restore<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
         choice: &RestoreChoice<'ctype>,
-        target_locs: &[PlayerCardLocation],
     ) -> PlayerCardLocation;
 
     fn choose_icon_effect<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
         choice: &IconEffectChoice<'ctype>,
-        icon_effects: &[IconEffect],
     ) -> Option<IconEffect>;
 
     fn choose_to_move_events<'v, 'g: 'v, 'ctype: 'g>(

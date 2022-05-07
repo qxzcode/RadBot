@@ -213,8 +213,7 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> PlayerControlle
     fn choose_action<'a, 'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
-        choice: &ActionChoice<'ctype>,
-        actions: &'a [Action<'ctype>],
+        choice: &'a ActionChoice<'ctype>,
     ) -> &'a Action<'ctype> {
         if !QUIET {
             println!("\nBoard state:\n{}", game_view.game_state);
@@ -222,7 +221,7 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> PlayerControlle
         let chosen_action = self.monte_carlo_choose_impl(
             game_view,
             |game_state, action| choice.choose(game_state, action),
-            actions,
+            choice.actions(),
             |action| action.format(game_view),
         );
         if !QUIET {
@@ -238,13 +237,11 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> PlayerControlle
         &self,
         game_view: &'v GameView<'g, 'ctype>,
         choice: &PlayChoice<'ctype>,
-        _person: &Person<'ctype>,
-        locations: &[PlayLocation],
     ) -> PlayLocation {
         let chosen_location = self.monte_carlo_choose(
             game_view,
             |game_state, location| choice.choose(game_state, *location),
-            locations,
+            choice.locations(),
         );
         if !QUIET {
             println!("{BOLD}{self:?} chose location:{RESET} {chosen_location:?}");
@@ -256,16 +253,15 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> PlayerControlle
         &self,
         game_view: &'v GameView<'g, 'ctype>,
         choice: &DamageChoice<'ctype>,
-        destroy: bool,
-        target_locs: &[CardLocation],
     ) -> CardLocation {
         let chosen_target = self.monte_carlo_choose(
             game_view,
             |game_state, target_loc| choice.choose(game_state, *target_loc),
-            target_locs,
+            choice.locations(),
         );
-        let verb = if destroy { "destroy" } else { "damage" };
         if !QUIET {
+            let destroy = choice.destroy();
+            let verb = if destroy { "destroy" } else { "damage" };
             println!("{BOLD}{self:?} chose {verb} target:{RESET} {chosen_target:?}");
         }
         *chosen_target
@@ -275,12 +271,11 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> PlayerControlle
         &self,
         game_view: &'v GameView<'g, 'ctype>,
         choice: &RestoreChoice<'ctype>,
-        target_locs: &[PlayerCardLocation],
     ) -> PlayerCardLocation {
         let chosen_target = self.monte_carlo_choose(
             game_view,
             |game_state, target_loc| choice.choose(game_state, *target_loc),
-            target_locs,
+            choice.locations(),
         );
         if !QUIET {
             println!("{BOLD}{self:?} chose restore target:{RESET} {chosen_target:?}");
@@ -292,9 +287,8 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> PlayerControlle
         &self,
         game_view: &'v GameView<'g, 'ctype>,
         choice: &IconEffectChoice<'ctype>,
-        icon_effects: &[IconEffect],
     ) -> Option<IconEffect> {
-        let icon_effects = icon_effects_with_none(icon_effects);
+        let icon_effects = icon_effects_with_none(choice.icon_effects());
         let chosen_icon_effect = self.monte_carlo_choose(
             game_view,
             |game_state, icon_effect| choice.choose(game_state, *icon_effect),

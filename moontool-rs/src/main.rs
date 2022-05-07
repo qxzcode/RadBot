@@ -132,28 +132,19 @@ fn do_one_choice<'ctype>(
 
     match choice {
         Choice::Action(action_choice) => {
-            let action = get_controller_for(game_state.cur_player).choose_action(
-                &game_state.view_for_cur(),
-                action_choice,
-                action_choice.actions(),
-            );
+            let action = get_controller_for(game_state.cur_player)
+                .choose_action(&game_state.view_for_cur(), action_choice);
             action_choice.choose(game_state, action)
         }
         Choice::PlayLoc(play_choice) => {
-            let loc = get_controller_for(play_choice.chooser()).choose_play_location(
-                &game_state.view_for(play_choice.chooser()),
-                play_choice,
-                play_choice.person(),
-                play_choice.locations(),
-            );
+            let loc = get_controller_for(play_choice.chooser())
+                .choose_play_location(&game_state.view_for(play_choice.chooser()), play_choice);
             play_choice.choose(game_state, loc)
         }
         Choice::Damage(damage_choice) => {
             let loc = get_controller_for(damage_choice.chooser()).choose_card_to_damage(
                 &game_state.view_for(damage_choice.chooser()),
                 damage_choice,
-                damage_choice.destroy(),
-                damage_choice.locations(),
             );
             damage_choice.choose(game_state, loc)
         }
@@ -161,7 +152,6 @@ fn do_one_choice<'ctype>(
             let loc = get_controller_for(restore_choice.chooser()).choose_card_to_restore(
                 &game_state.view_for(restore_choice.chooser()),
                 restore_choice,
-                restore_choice.locations(),
             );
             restore_choice.choose(game_state, loc)
         }
@@ -169,7 +159,6 @@ fn do_one_choice<'ctype>(
             let icon_effect = get_controller_for(icon_effect_choice.chooser()).choose_icon_effect(
                 &game_state.view_for(icon_effect_choice.chooser()),
                 icon_effect_choice,
-                icon_effect_choice.icon_effects(),
             );
             icon_effect_choice.choose(game_state, icon_effect)
         }

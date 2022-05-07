@@ -43,9 +43,10 @@ impl PlayerController for HumanController {
     fn choose_action<'a, 'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
-        _choice: &ActionChoice<'ctype>,
-        actions: &'a [Action<'ctype>],
+        choice: &'a ActionChoice<'ctype>,
     ) -> &'a Action<'ctype> {
+        let actions = choice.actions();
+
         // print the game state
         println!("\n{}\n", game_view.game_state.action_formatter(actions));
 
@@ -64,10 +65,11 @@ impl PlayerController for HumanController {
     fn choose_play_location<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
-        _choice: &PlayChoice<'ctype>,
-        person: &Person<'ctype>,
-        locations: &[PlayLocation],
+        choice: &PlayChoice<'ctype>,
     ) -> PlayLocation {
+        let person = choice.person();
+        let locations = choice.locations();
+
         let table_columns = game_view.my_state().columns.iter().map(|col| {
             vec![
                 style_person_slot(&col.person_slots[1]),
@@ -95,10 +97,11 @@ impl PlayerController for HumanController {
     fn choose_card_to_damage<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
-        _choice: &DamageChoice<'ctype>,
-        destroy: bool,
-        target_locs: &[CardLocation],
+        choice: &DamageChoice<'ctype>,
     ) -> CardLocation {
+        let target_locs = choice.locations();
+        let destroy = choice.destroy();
+
         print_card_selection(game_view.game_state, target_locs);
         let prompt = format!(
             "Choose a card to {}: ",
@@ -111,9 +114,10 @@ impl PlayerController for HumanController {
     fn choose_card_to_restore<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
-        _choice: &RestoreChoice<'ctype>,
-        target_locs: &[PlayerCardLocation],
+        choice: &RestoreChoice<'ctype>,
     ) -> PlayerCardLocation {
+        let target_locs = choice.locations();
+
         print_player_card_selection(game_view.game_state, game_view.player, target_locs);
         let loc_number =
             self.prompt_for_number("Choose a card to restore: ", 1..=target_locs.len());
@@ -123,10 +127,9 @@ impl PlayerController for HumanController {
     fn choose_icon_effect<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         _game_view: &'v GameView<'g, 'ctype>,
-        _choice: &IconEffectChoice<'ctype>,
-        icon_effects: &[IconEffect],
+        choice: &IconEffectChoice<'ctype>,
     ) -> Option<IconEffect> {
-        let icon_effects = icon_effects_with_none(icon_effects);
+        let icon_effects = icon_effects_with_none(choice.icon_effects());
         for (i, icon_effect) in icon_effects.iter().enumerate() {
             if let Some(icon_effect) = icon_effect {
                 println!("  ({})  {icon_effect:?}", i + 1);

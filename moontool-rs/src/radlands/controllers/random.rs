@@ -12,11 +12,11 @@ impl PlayerController for RandomController {
     fn choose_action<'a, 'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
-        _choice: &ActionChoice<'ctype>,
-        actions: &'a [Action<'ctype>],
+        choice: &'a ActionChoice<'ctype>,
     ) -> &'a Action<'ctype> {
         let mut rng = thread_rng();
-        let chosen_action = actions
+        let chosen_action = choice
+            .actions()
             .choose(&mut rng)
             .expect("choose_action called with empty actions list");
         if !self.quiet {
@@ -31,12 +31,11 @@ impl PlayerController for RandomController {
     fn choose_play_location<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         _game_view: &'v GameView<'g, 'ctype>,
-        _choice: &PlayChoice<'ctype>,
-        _person: &Person<'ctype>,
-        locations: &[PlayLocation],
+        choice: &PlayChoice<'ctype>,
     ) -> PlayLocation {
         let mut rng = thread_rng();
-        let chosen_location = locations
+        let chosen_location = choice
+            .locations()
             .choose(&mut rng)
             .expect("choose_play_location called with empty locations list");
         if !self.quiet {
@@ -48,16 +47,16 @@ impl PlayerController for RandomController {
     fn choose_card_to_damage<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         _game_view: &'v GameView<'g, 'ctype>,
-        _choice: &DamageChoice<'ctype>,
-        destroy: bool,
-        target_locs: &[CardLocation],
+        choice: &DamageChoice<'ctype>,
     ) -> CardLocation {
         let mut rng = thread_rng();
-        let chosen_target = target_locs
+        let chosen_target = choice
+            .locations()
             .choose(&mut rng)
             .expect("choose_card_to_damage called with empty target_locs list");
-        let verb = if destroy { "destroy" } else { "damage" };
         if !self.quiet {
+            let destroy = choice.destroy();
+            let verb = if destroy { "destroy" } else { "damage" };
             println!("{BOLD}RandomController chose {verb} target:{RESET} {chosen_target:?}");
         }
         *chosen_target
@@ -66,11 +65,11 @@ impl PlayerController for RandomController {
     fn choose_card_to_restore<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         _game_view: &'v GameView<'g, 'ctype>,
-        _choice: &RestoreChoice<'ctype>,
-        target_locs: &[PlayerCardLocation],
+        choice: &RestoreChoice<'ctype>,
     ) -> PlayerCardLocation {
         let mut rng = thread_rng();
-        let chosen_target = target_locs
+        let chosen_target = choice
+            .locations()
             .choose(&mut rng)
             .expect("choose_card_to_restore called with empty target_locs list");
         if !self.quiet {
@@ -82,9 +81,10 @@ impl PlayerController for RandomController {
     fn choose_icon_effect<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         _game_view: &'v GameView<'g, 'ctype>,
-        _choice: &IconEffectChoice<'ctype>,
-        icon_effects: &[IconEffect],
+        choice: &IconEffectChoice<'ctype>,
     ) -> Option<IconEffect> {
+        let icon_effects = choice.icon_effects();
+
         let mut rng = thread_rng();
         let none_probability = 1.0 / ((icon_effects.len() + 1) as f64);
         let chosen_icon_effect = if rng.gen_bool(none_probability) {
