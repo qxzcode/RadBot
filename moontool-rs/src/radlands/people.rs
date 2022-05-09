@@ -4,7 +4,7 @@ use std::fmt;
 use itertools::Itertools;
 
 use super::abilities::*;
-use super::choices::{ChoiceFuture, DamageColumnChoice, IconEffectChoice, MoveEventsChoice};
+use super::choices::*;
 use super::locations::PlayLocation;
 use super::styles::*;
 use super::{GameResult, GameView, IconEffect};
@@ -42,6 +42,9 @@ pub struct PersonType {
 
     /// The person's on-enter-play handler, if any.
     pub on_enter_play: Option<OnEnterPlayHandler>,
+
+    /// Whether this person enters play ready.
+    pub enters_play_ready: bool,
 
     /// The special identity of this person type (if any). Used for people that require special
     /// handling elsewhere in the code.
@@ -85,6 +88,15 @@ macro_rules! special_type {
     };
 }
 
+macro_rules! enters_play_ready {
+    () => {
+        false
+    };
+    ($enters_play_ready:literal) => {
+        $enters_play_ready
+    };
+}
+
 /// Convenience macro to allow omitting certain fields with common defaults.
 macro_rules! person_type {
     // basic person type with abilities
@@ -98,6 +110,7 @@ macro_rules! person_type {
             on_enter_play($($on_enter_play_param:ident $($on_enter_play_mut:ident)?),+)
                 => $on_enter_play_expr:expr,
         )?
+        $(enters_play_ready: $enters_play_ready:literal,)?
         $(special_type: $special_type:tt,)?
     } => {
         PersonType {
@@ -109,6 +122,7 @@ macro_rules! person_type {
             on_enter_play: on_enter_play!(
                 $(($($on_enter_play_param $($on_enter_play_mut)?),+) => $on_enter_play_expr)?
             ),
+            enters_play_ready: enters_play_ready!($($enters_play_ready)?),
             special_type: special_type!($($special_type)?),
         }
     };
@@ -292,7 +306,19 @@ pub fn get_person_types() -> Vec<PersonType> {
             cost: 1,
             abilities: [icon_ability(1, IconEffect::Injure)],
         },
-        // TODO: Rescue Team
+        person_type! {
+            name: "Rescue Team",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Injure,
+            cost: 1,
+            abilities: [ability! {
+                description => "Return one of your people to your hand";
+                cost => 0;
+                can_perform => true;
+                perform(game_view) => Ok(RescuePersonChoice::future(game_view.player));
+            }],
+            enters_play_ready: true,
+        },
         person_type! {
             name: "Vanguard",
             num_in_deck: 2,

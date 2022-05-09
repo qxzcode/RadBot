@@ -23,6 +23,7 @@ pub trait PlayerController {
     choose_function!{ choose_card_to_damage(..., DamageChoice<'ctype>) -> CardLocation }
     choose_function!{ choose_card_to_restore(..., RestoreChoice<'ctype>) -> PlayerCardLocation }
     choose_function!{ choose_icon_effect(..., IconEffectChoice<'ctype>) -> Option<IconEffect> }
+    choose_function!{ choose_person_to_rescue(..., RescuePersonChoice<'ctype>) -> PlayLocation }
     choose_function!{ choose_to_move_events(..., MoveEventsChoice<'ctype>) -> bool }
     choose_function!{ choose_column_to_damage(..., DamageColumnChoice<'ctype>) -> ColumnIndex }
 }

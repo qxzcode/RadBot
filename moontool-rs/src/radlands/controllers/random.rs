@@ -29,21 +29,30 @@ macro_rules! print_choice {
 
 macro_rules! random_choose_impl {
     (
-        $name:ident($choice:ident: $ChoiceType:ty) -> $ReturnType:ty,
+        $name:ident($game_view:ident, $choice:ident: $ChoiceType:ty) -> $ReturnType:ty,
         $options:expr, $phrase:expr
     ) => {
         fn $name<'a, 'v, 'g: 'v, 'ctype: 'g>(
             &self,
-            _game_view: &'v GameView<'g, 'ctype>,
+            $game_view: &'v GameView<'g, 'ctype>,
             $choice: &'a $ChoiceType,
         ) -> $ReturnType {
-            let chosen_option = $options
+            let chosen_option = *$options
                 .choose(&mut thread_rng())
                 .expect(concat!(
                     stringify!($name), " called with empty options list"
                 ));
             print_choice!(self, $phrase, chosen_option, :?);
-            *chosen_option
+            chosen_option
+        }
+    };
+    (
+        $name:ident($choice:ident: $ChoiceType:ty) -> $ReturnType:ty,
+        $options:expr, $phrase:expr
+    ) => {
+        random_choose_impl! {
+            $name(_game_view, $choice: $ChoiceType) -> $ReturnType,
+            $options, $phrase
         }
     };
 }
@@ -97,6 +106,11 @@ impl PlayerController for RandomController {
         };
         print_choice!(self, "icon effect", chosen_icon_effect, :?);
         chosen_icon_effect
+    }
+
+    random_choose_impl! {
+        choose_person_to_rescue(game_view, _choice: RescuePersonChoice<'ctype>) -> PlayLocation,
+        game_view.my_state().person_locs().collect_vec(), "rescue target"
     }
 
     fn choose_to_move_events<'v, 'g: 'v, 'ctype: 'g>(

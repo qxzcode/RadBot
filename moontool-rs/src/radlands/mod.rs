@@ -771,7 +771,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                 // mark the person as no longer ready
                 game_view
                     .my_state_mut()
-                    .person_slot_mut(location)
+                    .person_mut_slot(location)
                     .expect("Tried to use a person ability, but there was no person in the slot")
                     .set_not_ready();
 
@@ -809,7 +809,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
     pub fn format(&self, game_view: &'v GameView<'g, 'ctype>) -> String {
         match *self {
             Action::PlayPerson(card) => format!(
-                "Play {}{} (costs {WATER}{} water{RESET}){}",
+                "Play {}{} (costs {WATER}{} water{RESET}){}{}",
                 card.styled_name(),
                 if card.special_type == SpecialType::Holdout {
                     " in column without destroyed camp"
@@ -819,6 +819,11 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                 card.cost,
                 if card.on_enter_play.is_some() {
                     " <has on-enter-play effect>"
+                } else {
+                    ""
+                },
+                if card.enters_play_ready {
+                    " <enters play ready>"
                 } else {
                     ""
                 },

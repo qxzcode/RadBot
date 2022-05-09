@@ -162,6 +162,13 @@ fn do_one_choice<'ctype>(
             );
             icon_effect_choice.choose(game_state, icon_effect)
         }
+        Choice::RescuePerson(rescue_person_choice) => {
+            let loc = get_controller_for(rescue_person_choice.chooser()).choose_person_to_rescue(
+                &game_state.view_for(rescue_person_choice.chooser()),
+                rescue_person_choice,
+            );
+            rescue_person_choice.choose(game_state, loc)
+        }
         Choice::MoveEvents(move_events_choice) => {
             let move_events = get_controller_for(move_events_choice.chooser())
                 .choose_to_move_events(

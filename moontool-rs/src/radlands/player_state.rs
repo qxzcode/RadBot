@@ -60,8 +60,13 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         self.column(loc.column()).person_slot(loc.row())
     }
 
+    /// Returns the person at the given location as mutable.
+    pub fn person_mut_slot(&mut self, loc: PlayLocation) -> Option<&mut Person<'ctype>> {
+        self.column_mut(loc.column()).person_mut_slot(loc.row())
+    }
+
     /// Returns the person slot at the given location as mutable.
-    pub fn person_slot_mut(&mut self, loc: PlayLocation) -> Option<&mut Person<'ctype>> {
+    pub fn person_slot_mut(&mut self, loc: PlayLocation) -> &mut Option<Person<'ctype>> {
         self.column_mut(loc.column()).person_slot_mut(loc.row())
     }
 
@@ -138,6 +143,25 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
                 .restore(),
             Err(()) => column.camp.restore(),
         }
+    }
+
+    /// Removes and returns the Person at the given location, shifting any person in front of it back.
+    /// Panics if there is no person at the location.
+    pub fn remove_person_at(&mut self, loc: PlayLocation) -> Person<'ctype> {
+        // remove the person from its slot
+        let person = self
+            .person_slot_mut(loc)
+            .take()
+            .expect("Tried to remove a person at an empty location");
+
+        // shift any person in front of it back
+        if loc.row() == 0.into() {
+            let column = self.column_mut(loc.column());
+            column.person_slots[0] = column.person_slots[1].take();
+        }
+
+        // return the removed person
+        person
     }
 
     /// Returns whether this player has an empty person slot.
@@ -469,9 +493,14 @@ impl<'ctype> CardColumn<'ctype> {
         self.person_slots[loc.as_usize()].as_ref()
     }
 
-    /// Returns the person slot at the given location as mutable.
-    pub fn person_slot_mut(&mut self, loc: PersonRowIndex) -> Option<&mut Person<'ctype>> {
+    /// Returns the person at the given location as mutable.
+    pub fn person_mut_slot(&mut self, loc: PersonRowIndex) -> Option<&mut Person<'ctype>> {
         self.person_slots[loc.as_usize()].as_mut()
+    }
+
+    /// Returns the person slot at the given location as mutable.
+    pub fn person_slot_mut(&mut self, loc: PersonRowIndex) -> &mut Option<Person<'ctype>> {
+        &mut self.person_slots[loc.as_usize()]
     }
 
     /// Returns an iterator over the people in the column.
@@ -708,11 +737,25 @@ impl<'ctype> Person<'ctype> {
         }
     }
 
-    /// Creates an ununjured but non-ready person from a person type.
+    /// Creates a Person from a person type to be played onto the board.
+    /// The person will be ready if person_type.enters_play_ready is true; otherwise, it will be
+    /// not ready and uninjured.
     pub(super) fn new_non_punk(person_type: &'ctype PersonType) -> Self {
         Person::NonPunk {
             person_type,
-            status: NonPunkStatus::NotReady,
+            status: if person_type.enters_play_ready {
+                NonPunkStatus::Ready
+            } else {
+                NonPunkStatus::NotReady
+            },
+        }
+    }
+
+    // Returns the identity of this person's card.
+    pub fn card_type(&self) -> PersonOrEventType<'ctype> {
+        match *self {
+            Person::Punk { card_type, .. } => card_type,
+            Person::NonPunk { person_type, .. } => PersonOrEventType::Person(person_type),
         }
     }
 

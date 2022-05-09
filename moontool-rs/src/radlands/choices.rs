@@ -15,6 +15,7 @@ pub enum Choice<'ctype> {
     Damage(DamageChoice<'ctype>),
     Restore(RestoreChoice<'ctype>),
     IconEffect(IconEffectChoice<'ctype>), // only used for Scientist's ability
+    RescuePerson(RescuePersonChoice<'ctype>), // only used for Rescue Team's ability
     MoveEvents(MoveEventsChoice<'ctype>), // only used for Doomsayer's on-enter-play effect
     DamageColumn(DamageColumnChoice<'ctype>), // only used for Magnus Karv's ability
 }
@@ -368,6 +369,51 @@ impl<'g, 'ctype: 'g> IconEffectChoice<'ctype> {
             // no icon effect was chosen, so just advance the game state until the next choice
             (self.then)(game_state, ())
         }
+    }
+}
+
+pub struct RescuePersonChoice<'ctype> {
+    /// The player that must choose one of their people to rescue.
+    chooser: Player,
+    /// A callback for what to do after the player has chosen and the person has been rescued.
+    then: Rc<dyn Fn(&mut GameState<'ctype>, ()) -> Result<Choice<'ctype>, GameResult> + 'ctype>,
+}
+
+impl<'g, 'ctype: 'g> RescuePersonChoice<'ctype> {
+    /// Returns the player who must choose one of their people to rescue.
+    pub fn chooser(&self) -> Player {
+        self.chooser
+    }
+
+    /// Creates a new future that asks the player to rescue one of their people before resolving.
+    pub fn future(chooser: Player) -> ChoiceFuture<'g, 'ctype> {
+        ChoiceFuture {
+            choice_builder: Box::new(move |callback| {
+                Ok(Choice::RescuePerson(RescuePersonChoice {
+                    chooser,
+                    then: callback,
+                }))
+            }),
+        }
+    }
+
+    /// Chooses the given person to rescue, updating the game state
+    /// and returning the next Choice.
+    pub fn choose(
+        &self,
+        game_state: &'g mut GameState<'ctype>,
+        person_loc: PlayLocation,
+    ) -> Result<Choice<'ctype>, GameResult> {
+        let player_state = game_state.player_mut(self.chooser);
+
+        // remove the person from the board
+        let person = player_state.remove_person_at(person_loc);
+
+        // add the card to the player's hand
+        player_state.hand.add_one(person.card_type());
+
+        // advance the game state until the next choice
+        (self.then)(game_state, ())
     }
 }
 

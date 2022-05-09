@@ -141,6 +141,23 @@ impl PlayerController for HumanController {
         icon_effects[effect_number - 1]
     }
 
+    fn choose_person_to_rescue<'v, 'g: 'v, 'ctype: 'g>(
+        &self,
+        game_view: &'v GameView<'g, 'ctype>,
+        _choice: &RescuePersonChoice<'ctype>,
+    ) -> PlayLocation {
+        let target_locs = game_view.my_state().person_locs().collect_vec();
+
+        print_player_card_selection(
+            game_view.game_state,
+            game_view.player,
+            &target_locs.iter().map(|&loc| loc.into()).collect_vec(),
+        );
+        let loc_number =
+            self.prompt_for_number("Choose a person to rescue: ", 1..=target_locs.len());
+        target_locs[loc_number - 1]
+    }
+
     fn choose_to_move_events<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         _game_view: &'v GameView<'g, 'ctype>,

@@ -206,7 +206,16 @@ macro_rules! monte_carlo_choose_impl {
         $options:expr, $phrase:expr
     ) => {
         monte_carlo_choose_impl! {
-            $name(game_view, $choice: $ChoiceType) -> $ReturnType,
+            $name(_game_view, $choice: $ChoiceType) -> $ReturnType,
+            $options, $phrase
+        }
+    };
+    (
+        $name:ident($game_view:ident, $choice:ident: $ChoiceType:ty) -> $ReturnType:ty,
+        $options:expr, $phrase:expr
+    ) => {
+        monte_carlo_choose_impl! {
+            $name($game_view, $choice: $ChoiceType) -> $ReturnType,
             {}
             $options => chosen_option,
             option => *option,
@@ -277,6 +286,10 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> PlayerControlle
     monte_carlo_choose_impl! {
         choose_icon_effect(choice: IconEffectChoice<'ctype>) -> Option<IconEffect>,
         &icon_effects_with_none(choice.icon_effects()), "icon effect"
+    }
+    monte_carlo_choose_impl! {
+        choose_person_to_rescue(game_view, choice: RescuePersonChoice<'ctype>) -> PlayLocation,
+        &game_view.my_state().person_locs().collect_vec(), "rescue target"
     }
     monte_carlo_choose_impl! {
         choose_to_move_events(game_view, choice: MoveEventsChoice<'ctype>) -> bool,
