@@ -132,58 +132,105 @@ impl<'g, 'ctype: 'g> ActionChoice<'ctype> {
     }
 }
 
-pub struct PlayChoice<'ctype> {
-    /// The player who is playing the card.
-    chooser: Player,
-    /// The person who is being played.
-    person: Person<'ctype>,
-    /// The locations where the card can be played.
-    locations: Vec<PlayLocation>,
-    /// A callback for what to do after the player has chosen and the card has been played.
-    then: Rc<dyn Fn(&mut GameState<'ctype>, ()) -> Result<Choice<'ctype>, GameResult> + 'ctype>,
+macro_rules! choice_struct {
+    {
+        #[doc = $choice_doc:literal]
+        $VariantName:ident:
+        pub struct $StructName:ident => $result_type:ty {
+            $($(#[$field_meta:meta])* $field:ident: ($($field_type:tt)+),)*
+        }
+
+        $(#[$choose_meta:meta])*
+        pub fn choose(&$self:ident, $game_state:ident, $action:ident: $action_type:ty $(,)?)
+            $perform_action:block
+    } => {
+        pub struct $StructName<'ctype> {
+            /// The player who must choose.
+            chooser: Player,
+
+            $($(#[$field_meta])* $field: $($field_type)+,)*
+
+            /// A callback for what to do after the player chooses and the game state is updated.
+            then: Rc<dyn Fn(&mut GameState<'ctype>, $result_type) -> Result<Choice<'ctype>, GameResult> + 'ctype>,
+        }
+
+        impl<'g, 'ctype: 'g> $StructName<'ctype> {
+            /// The player who must choose.
+            pub fn chooser(&self) -> Player {
+                self.chooser
+            }
+
+            $(
+                $(#[$field_meta])*
+                pub fn $field(&self) -> field_return_type!($($field_type)+) {
+                    field_return_expr!(self, $field, $($field_type)+)
+                }
+            )*
+
+            #[doc = "Creates a new future that"]
+            #[doc = $choice_doc]
+            #[doc = "before resolving."]
+            pub fn future(
+                chooser: Player,
+                $($field: $($field_type)+,)*
+            ) -> ChoiceFuture<'g, 'ctype, $result_type> {
+                ChoiceFuture {
+                    choice_builder: Box::new(move |callback| {
+                        Ok(Choice::$VariantName($StructName {
+                            chooser,
+                            $($field,)*
+                            then: callback,
+                        }))
+                    }),
+                }
+            }
+
+            $(#[$choose_meta])*
+            pub fn choose(
+                &$self,
+                $game_state: &'g mut GameState<'ctype>,
+                $action: $action_type,
+            ) -> Result<Choice<'ctype>, GameResult> {
+                $perform_action
+            }
+        }
+    };
 }
 
-impl<'g, 'ctype: 'g> PlayChoice<'ctype> {
-    /// Returns the player who is playing the card.
-    pub fn chooser(&self) -> Player {
-        self.chooser
+macro_rules! field_return_type {
+    (bool) => {
+        bool
+    };
+    (Vec<$type:ty>) => {
+        &[$type]
+    };
+    ($type:ty) => {
+        &$type
+    };
+}
+
+macro_rules! field_return_expr {
+    ($self:ident, $field:ident, bool) => {
+        $self.$field
+    };
+    ($self:ident, $field:ident, $type:ty) => {
+        &$self.$field
+    };
+}
+
+choice_struct! {
+    /// asks the player to choose a play location
+    PlayLoc:
+    pub struct PlayChoice => () {
+        /// The person who is being played.
+        person: (Person<'ctype>),
+        /// The locations where the card can be played.
+        locations: (Vec<PlayLocation>),
     }
 
-    /// Returns the Person to be played.
-    pub fn person(&self) -> &Person<'ctype> {
-        &self.person
-    }
-
-    /// Returns the set of possible play locations.
-    pub fn locations(&self) -> &[PlayLocation] {
-        &self.locations
-    }
-
-    /// Creates a new future that asks the player to choose a play location.
-    pub fn future(
-        chooser: Player,
-        person: Person<'ctype>,
-        locations: Vec<PlayLocation>,
-    ) -> ChoiceFuture<'g, 'ctype> {
-        ChoiceFuture {
-            choice_builder: Box::new(move |callback| {
-                Ok(Choice::PlayLoc(PlayChoice {
-                    chooser,
-                    person,
-                    locations,
-                    then: callback,
-                }))
-            }),
-        }
-    }
-
-    /// Plays the person at the given location, updating the game state and
-    /// returning the next Choice.
-    pub fn choose(
-        &self,
-        game_state: &'g mut GameState<'ctype>,
-        play_loc: PlayLocation,
-    ) -> Result<Choice<'ctype>, GameResult> {
+    /// Plays the person at the given location,
+    /// updating the game state and returning the next Choice.
+    pub fn choose(&self, game_state, play_loc: PlayLocation) {
         let mut view = game_state.view_for(self.chooser);
 
         // place the card onto the board
@@ -209,59 +256,18 @@ impl<'g, 'ctype: 'g> PlayChoice<'ctype> {
     }
 }
 
-pub struct DamageChoice<'ctype> {
-    /// The player that must choose a card to damage.
-    chooser: Player,
-    /// Whether to destroy the card (versus just damaging it).
-    destroy: bool,
-    /// The locations of the cards that can be damaged.
-    locations: Vec<CardLocation>,
-    /// A callback for what to do after the player has chosen and the card has been damaged.
-    then: Rc<
-        dyn Fn(&mut GameState<'ctype>, CardLocation) -> Result<Choice<'ctype>, GameResult> + 'ctype,
-    >,
-}
-
-impl<'g, 'ctype: 'g> DamageChoice<'ctype> {
-    /// Returns the player who must choose a card to damage.
-    pub fn chooser(&self) -> Player {
-        self.chooser
-    }
-
-    /// Returns whether the chosen card will be destroyed instead of just damaged.
-    pub fn destroy(&self) -> bool {
-        self.destroy
-    }
-
-    /// Returns the set of possible locations to damage.
-    pub fn locations(&self) -> &[CardLocation] {
-        &self.locations
-    }
-
-    /// Creates a new future that asks the player to damage a card before resolving.
-    pub fn future(
-        chooser: Player,
-        destroy: bool,
-        locations: Vec<CardLocation>,
-    ) -> ChoiceFuture<'g, 'ctype, CardLocation> {
-        ChoiceFuture {
-            choice_builder: Box::new(move |callback| {
-                Ok(Choice::Damage(DamageChoice {
-                    chooser,
-                    destroy,
-                    locations,
-                    then: callback,
-                }))
-            }),
-        }
+choice_struct! {
+    /// asks the player to damage a card
+    Damage:
+    pub struct DamageChoice => CardLocation {
+        /// Whether to destroy the card (versus just damaging it).
+        destroy: (bool),
+        /// The locations of the cards that can be damaged.
+        locations: (Vec<CardLocation>),
     }
 
     /// Chooses the given card to damage, updating the game state and returning the next Choice.
-    pub fn choose(
-        &self,
-        game_state: &'g mut GameState<'ctype>,
-        target_loc: CardLocation,
-    ) -> Result<Choice<'ctype>, GameResult> {
+    pub fn choose(&self, game_state, target_loc: CardLocation) {
         // damage the card
         game_state.damage_card_at(target_loc, self.destroy, true)?;
 
@@ -270,45 +276,16 @@ impl<'g, 'ctype: 'g> DamageChoice<'ctype> {
     }
 }
 
-pub struct RestoreChoice<'ctype> {
-    /// The player that must choose a card to restore.
-    chooser: Player,
-    /// The locations of the cards that can be restored.
-    locations: Vec<PlayerCardLocation>,
-    /// A callback for what to do after the player has chosen and the card has been restored.
-    then: Rc<dyn Fn(&mut GameState<'ctype>, ()) -> Result<Choice<'ctype>, GameResult> + 'ctype>,
-}
-
-impl<'g, 'ctype: 'g> RestoreChoice<'ctype> {
-    /// Returns the player who must choose a card to restore.
-    pub fn chooser(&self) -> Player {
-        self.chooser
-    }
-
-    /// Returns the set of possible locations to restore.
-    pub fn locations(&self) -> &[PlayerCardLocation] {
-        &self.locations
-    }
-
-    /// Creates a new future that asks the player to restore a card before resolving.
-    pub fn future(chooser: Player, locations: Vec<PlayerCardLocation>) -> ChoiceFuture<'g, 'ctype> {
-        ChoiceFuture {
-            choice_builder: Box::new(move |callback| {
-                Ok(Choice::Restore(RestoreChoice {
-                    chooser,
-                    locations,
-                    then: callback,
-                }))
-            }),
-        }
+choice_struct! {
+    /// asks the player to restore a card
+    Restore:
+    pub struct RestoreChoice => () {
+        /// The locations of the cards that can be restored.
+        locations: (Vec<PlayerCardLocation>),
     }
 
     /// Chooses the given card to restore, updating the game state and returning the next Choice.
-    pub fn choose(
-        &self,
-        game_state: &'g mut GameState<'ctype>,
-        target_loc: PlayerCardLocation,
-    ) -> Result<Choice<'ctype>, GameResult> {
+    pub fn choose(&self, game_state, target_loc: PlayerCardLocation) {
         // restore the card
         game_state
             .player_mut(self.chooser)
@@ -319,48 +296,17 @@ impl<'g, 'ctype: 'g> RestoreChoice<'ctype> {
     }
 }
 
-pub struct IconEffectChoice<'ctype> {
-    /// The player that must choose an icon effect to perform.
-    chooser: Player,
-    /// The icon effects that can be performed.
-    icon_effects: Vec<IconEffect>,
-    /// A callback for what to do after the player has chosen and the icon effect has been performed.
-    then: Rc<dyn Fn(&mut GameState<'ctype>, ()) -> Result<Choice<'ctype>, GameResult> + 'ctype>,
-}
-
-impl<'g, 'ctype: 'g> IconEffectChoice<'ctype> {
-    /// Returns the player who must choose an icon effect to perform.
-    pub fn chooser(&self) -> Player {
-        self.chooser
-    }
-
-    /// Returns the set of possible icon effects to perform.
-    pub fn icon_effects(&self) -> &[IconEffect] {
-        &self.icon_effects
-    }
-
-    /// Creates a new future that asks the player to perform an icon effect before resolving.
-    /// The player may also choose not to perform an icon effect.
-    pub fn future(chooser: Player, icon_effects: Vec<IconEffect>) -> ChoiceFuture<'g, 'ctype> {
-        assert!(!icon_effects.is_empty(), "icon_effects must not be empty");
-        ChoiceFuture {
-            choice_builder: Box::new(move |callback| {
-                Ok(Choice::IconEffect(IconEffectChoice {
-                    chooser,
-                    icon_effects,
-                    then: callback,
-                }))
-            }),
-        }
+choice_struct! {
+    /// asks the player to perform an icon effect
+    IconEffect:
+    pub struct IconEffectChoice => () {
+        /// The icon effects that can be performed.
+        icon_effects: (Vec<IconEffect>),
     }
 
     /// Chooses the given icon effect to perform (or None), updating the game state
     /// and returning the next Choice.
-    pub fn choose(
-        &self,
-        game_state: &'g mut GameState<'ctype>,
-        icon_effect: Option<IconEffect>,
-    ) -> Result<Choice<'ctype>, GameResult> {
+    pub fn choose(&self, game_state, icon_effect: Option<IconEffect>) {
         if let Some(icon_effect) = icon_effect {
             // perform the icon effect
             let future = icon_effect.perform(game_state.view_for(self.chooser))?;
@@ -372,38 +318,14 @@ impl<'g, 'ctype: 'g> IconEffectChoice<'ctype> {
     }
 }
 
-pub struct RescuePersonChoice<'ctype> {
-    /// The player that must choose one of their people to rescue.
-    chooser: Player,
-    /// A callback for what to do after the player has chosen and the person has been rescued.
-    then: Rc<dyn Fn(&mut GameState<'ctype>, ()) -> Result<Choice<'ctype>, GameResult> + 'ctype>,
-}
-
-impl<'g, 'ctype: 'g> RescuePersonChoice<'ctype> {
-    /// Returns the player who must choose one of their people to rescue.
-    pub fn chooser(&self) -> Player {
-        self.chooser
-    }
-
-    /// Creates a new future that asks the player to rescue one of their people before resolving.
-    pub fn future(chooser: Player) -> ChoiceFuture<'g, 'ctype> {
-        ChoiceFuture {
-            choice_builder: Box::new(move |callback| {
-                Ok(Choice::RescuePerson(RescuePersonChoice {
-                    chooser,
-                    then: callback,
-                }))
-            }),
-        }
-    }
+choice_struct! {
+    /// asks the player to rescue one of their people
+    RescuePerson:
+    pub struct RescuePersonChoice => () {}
 
     /// Chooses the given person to rescue, updating the game state
     /// and returning the next Choice.
-    pub fn choose(
-        &self,
-        game_state: &'g mut GameState<'ctype>,
-        person_loc: PlayLocation,
-    ) -> Result<Choice<'ctype>, GameResult> {
+    pub fn choose(&self, game_state, person_loc: PlayLocation) {
         let player_state = game_state.player_mut(self.chooser);
 
         // remove the person from the board
@@ -417,38 +339,14 @@ impl<'g, 'ctype: 'g> RescuePersonChoice<'ctype> {
     }
 }
 
-pub struct MoveEventsChoice<'ctype> {
-    /// The player that must choose whether to move their opponent's events back 1.
-    chooser: Player,
-    /// A callback for what to do after the player has chosen and the events have been moved.
-    then: Rc<dyn Fn(&mut GameState<'ctype>, ()) -> Result<Choice<'ctype>, GameResult> + 'ctype>,
-}
-
-impl<'g, 'ctype: 'g> MoveEventsChoice<'ctype> {
-    /// Returns the player who must choose whether to move their opponent's events back 1.
-    pub fn chooser(&self) -> Player {
-        self.chooser
-    }
-
-    /// Creates a new future that asks the player whether to move their opponent's events back 1.
-    pub fn future(chooser: Player) -> ChoiceFuture<'g, 'ctype> {
-        ChoiceFuture {
-            choice_builder: Box::new(move |callback| {
-                Ok(Choice::MoveEvents(MoveEventsChoice {
-                    chooser,
-                    then: callback,
-                }))
-            }),
-        }
-    }
+choice_struct! {
+    /// asks the player whether to move their opponent's events back 1
+    MoveEvents:
+    pub struct MoveEventsChoice => () {}
 
     /// Chooses whether to move the opponent's events back 1, updating the game state
     /// and returning the next Choice.
-    pub fn choose(
-        &self,
-        game_state: &'g mut GameState<'ctype>,
-        move_events: bool,
-    ) -> Result<Choice<'ctype>, GameResult> {
+    pub fn choose(&self, game_state, move_events: bool) {
         if move_events {
             // move the events back 1
             game_state
@@ -461,45 +359,16 @@ impl<'g, 'ctype: 'g> MoveEventsChoice<'ctype> {
     }
 }
 
-pub struct DamageColumnChoice<'ctype> {
-    /// The player that must choose an opponent column to damage.
-    chooser: Player,
-    /// The columns that can be damaged.
-    columns: Vec<ColumnIndex>,
-    /// A callback for what to do after the player has chosen and the cards have been damaged.
-    then: Rc<dyn Fn(&mut GameState<'ctype>, ()) -> Result<Choice<'ctype>, GameResult> + 'ctype>,
-}
-
-impl<'g, 'ctype: 'g> DamageColumnChoice<'ctype> {
-    /// Returns the player who must choose an opponent column to damage.
-    pub fn chooser(&self) -> Player {
-        self.chooser
-    }
-
-    /// Returns the set of possible columns to damage.
-    pub fn columns(&self) -> &[ColumnIndex] {
-        &self.columns
-    }
-
-    /// Creates a new future that asks the player to damage an opponent column before resolving.
-    pub fn future(chooser: Player, columns: Vec<ColumnIndex>) -> ChoiceFuture<'g, 'ctype> {
-        ChoiceFuture {
-            choice_builder: Box::new(move |callback| {
-                Ok(Choice::DamageColumn(DamageColumnChoice {
-                    chooser,
-                    columns,
-                    then: callback,
-                }))
-            }),
-        }
+choice_struct! {
+    /// asks the player to damage an opponent column
+    DamageColumn:
+    pub struct DamageColumnChoice => () {
+        /// The columns that can be damaged.
+        columns: (Vec<ColumnIndex>),
     }
 
     /// Chooses the given column to damage, updating the game state and returning the next Choice.
-    pub fn choose(
-        &self,
-        game_state: &'g mut GameState<'ctype>,
-        column: ColumnIndex,
-    ) -> Result<Choice<'ctype>, GameResult> {
+    pub fn choose(&self, game_state, column: ColumnIndex) {
         // damage all cards in the column
         let target_locs = game_state
             .player(self.chooser.other())
