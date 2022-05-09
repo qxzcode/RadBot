@@ -201,10 +201,10 @@ impl<C: PlayerController, F: Fn(Player) -> C, const QUIET: bool> MonteCarloContr
 }
 
 macro_rules! monte_carlo_choose_impl {
-    (
+    {
         $name:ident($choice:ident: $ChoiceType:ty) -> $ReturnType:ty,
         $options:expr, $phrase:expr
-    ) => {
+    } => {
         monte_carlo_choose_impl! {
             $name(_game_view, $choice: $ChoiceType) -> $ReturnType,
             $options, $phrase

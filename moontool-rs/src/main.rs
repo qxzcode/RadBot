@@ -130,60 +130,40 @@ fn do_one_choice<'ctype>(
         Player::Player2 => p2,
     };
 
-    match choice {
-        Choice::Action(action_choice) => {
-            let action = get_controller_for(game_state.cur_player)
-                .choose_action(&game_state.view_for_cur(), action_choice);
-            action_choice.choose(game_state, action)
-        }
-        Choice::PlayLoc(play_choice) => {
-            let loc = get_controller_for(play_choice.chooser())
-                .choose_play_location(&game_state.view_for(play_choice.chooser()), play_choice);
-            play_choice.choose(game_state, loc)
-        }
-        Choice::Damage(damage_choice) => {
-            let loc = get_controller_for(damage_choice.chooser()).choose_card_to_damage(
-                &game_state.view_for(damage_choice.chooser()),
-                damage_choice,
-            );
-            damage_choice.choose(game_state, loc)
-        }
-        Choice::Restore(restore_choice) => {
-            let loc = get_controller_for(restore_choice.chooser()).choose_card_to_restore(
-                &game_state.view_for(restore_choice.chooser()),
-                restore_choice,
-            );
-            restore_choice.choose(game_state, loc)
-        }
-        Choice::IconEffect(icon_effect_choice) => {
-            let icon_effect = get_controller_for(icon_effect_choice.chooser()).choose_icon_effect(
-                &game_state.view_for(icon_effect_choice.chooser()),
-                icon_effect_choice,
-            );
-            icon_effect_choice.choose(game_state, icon_effect)
-        }
-        Choice::RescuePerson(rescue_person_choice) => {
-            let loc = get_controller_for(rescue_person_choice.chooser()).choose_person_to_rescue(
-                &game_state.view_for(rescue_person_choice.chooser()),
-                rescue_person_choice,
-            );
-            rescue_person_choice.choose(game_state, loc)
-        }
-        Choice::MoveEvents(move_events_choice) => {
-            let move_events = get_controller_for(move_events_choice.chooser())
-                .choose_to_move_events(
-                    &game_state.view_for(move_events_choice.chooser()),
-                    move_events_choice,
-                );
-            move_events_choice.choose(game_state, move_events)
-        }
-        Choice::DamageColumn(damage_column_choice) => {
-            let column = get_controller_for(damage_column_choice.chooser())
-                .choose_column_to_damage(
-                    &game_state.view_for(damage_column_choice.chooser()),
-                    damage_column_choice,
-                );
-            damage_column_choice.choose(game_state, column)
-        }
+    macro_rules! do_choice {
+        {
+            $(for $chooser:expr, $Variant:ident => $choose_func:ident);+ ;
+            $($Variant2:ident => $choose_func2:ident);+ ;
+        } => {
+            match choice {
+                $(
+                    Choice::$Variant(choice) => {
+                        let chooser = $chooser;
+                        let chosen_option = get_controller_for(chooser)
+                            .$choose_func(&game_state.view_for(chooser), choice);
+                        choice.choose(game_state, chosen_option)
+                    }
+                )+
+                $(
+                    Choice::$Variant2(choice) => {
+                        let chooser = choice.chooser();
+                        let chosen_option = get_controller_for(chooser)
+                            .$choose_func2(&game_state.view_for(chooser), choice);
+                        choice.choose(game_state, chosen_option)
+                    }
+                )+
+            }
+        };
+    }
+
+    do_choice! {
+        for game_state.cur_player, Action => choose_action;
+        PlayLoc => choose_play_location;
+        Damage => choose_card_to_damage;
+        Restore => choose_card_to_restore;
+        IconEffect => choose_icon_effect;
+        RescuePerson => choose_person_to_rescue;
+        MoveEvents => choose_to_move_events;
+        DamageColumn => choose_column_to_damage;
     }
 }

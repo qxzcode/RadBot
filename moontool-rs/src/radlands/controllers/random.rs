@@ -28,10 +28,10 @@ macro_rules! print_choice {
 }
 
 macro_rules! random_choose_impl {
-    (
+    {
         $name:ident($game_view:ident, $choice:ident: $ChoiceType:ty) -> $ReturnType:ty,
         $options:expr, $phrase:expr
-    ) => {
+    } => {
         fn $name<'a, 'v, 'g: 'v, 'ctype: 'g>(
             &self,
             $game_view: &'v GameView<'g, 'ctype>,
