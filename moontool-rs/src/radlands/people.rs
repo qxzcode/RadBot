@@ -22,6 +22,9 @@ pub enum SpecialType {
     Holdout,
     Mimic,
     ArgoYesky,
+    ZetoKhan,
+    KarliBlaze,
+    VeraVosh,
 }
 
 /// A type of person card.
@@ -471,7 +474,15 @@ pub fn get_person_types() -> Vec<PersonType> {
             }],
         },
         // TODO: Zeto Khan
-        // TODO: Karli Blaze
+        person_type! {
+            name: "Karli Blaze",
+            num_in_deck: 1,
+            junk_effect: IconEffect::GainPunk,
+            cost: 3,
+            abilities: [icon_ability(1, IconEffect::Damage)],
+            enters_play_ready: true,
+            special_type: KarliBlaze, // Trait: all your people enter play ready
+        },
         // TODO: Vera Vosh
         person_type! {
             name: "Molgur Stang",

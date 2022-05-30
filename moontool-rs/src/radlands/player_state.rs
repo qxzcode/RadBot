@@ -212,6 +212,16 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         self.enumerate_people().map(|(loc, _)| loc)
     }
 
+    /// Returns whether this player has a person of the given SpecialType that is uninjured (i.e.
+    /// whose trait is active).
+    pub fn has_special_person(&self, special_type: SpecialType) -> bool {
+        self.people().any(|person| {
+            matches!(person,
+                Person::NonPunk { person_type, .. } if person_type.special_type == special_type
+            )
+        })
+    }
+
     /// Returns an iterator over the locations of this player's cards (people
     /// and non-destroyed camps).
     pub fn card_locs(&self) -> impl Iterator<Item = PlayerCardLocation> + '_ {
@@ -765,12 +775,17 @@ impl<'ctype> Person<'ctype> {
     }
 
     /// Creates a Person from a person type to be played onto the board.
-    /// The person will be ready if person_type.enters_play_ready is true; otherwise, it will be
-    /// not ready and uninjured.
-    pub(super) fn new_non_punk(person_type: &'ctype PersonType) -> Self {
+    /// The supplied view must be for the player playing the person.
+    /// The person will be ready if person_type.enters_play_ready is true or if
+    /// Karli Blaze's trait is active; otherwise, it will be not ready and uninjured.
+    pub(super) fn new_non_punk(person_type: &'ctype PersonType, game_view: &GameView) -> Self {
+        let force_ready = game_view
+            .my_state()
+            .has_special_person(SpecialType::KarliBlaze);
+
         Person::NonPunk {
             person_type,
-            status: if person_type.enters_play_ready {
+            status: if force_ready || person_type.enters_play_ready {
                 NonPunkStatus::Ready
             } else {
                 NonPunkStatus::NotReady

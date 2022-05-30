@@ -719,8 +719,9 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                     // No such restriction for other people.
                     None
                 };
+                let person = Person::new_non_punk(person_type, &game_view);
                 game_view
-                    .play_person(Person::new_non_punk(person_type), destroyed_restriction)
+                    .play_person(person, destroyed_restriction)
                     .then(|game_state, _| Ok(Choice::new_actions(game_state)))
             }
             Action::PlayHoldout(person_type) => {
@@ -731,8 +732,9 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                     .remove_one(PersonOrEventType::Person(person_type));
 
                 // play the person into a column with a destroyed camp
+                let person = Person::new_non_punk(person_type, &game_view);
                 game_view
-                    .play_person(Person::new_non_punk(person_type), Some(true))
+                    .play_person(person, Some(true))
                     .then(|game_state, _| Ok(Choice::new_actions(game_state)))
             }
             Action::PlayEvent(event_type) => {
