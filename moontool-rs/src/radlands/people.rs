@@ -21,6 +21,7 @@ pub enum SpecialType {
     None,
     Holdout,
     Mimic,
+    ArgoYesky,
 }
 
 /// A type of person card.
@@ -439,7 +440,18 @@ pub fn get_person_types() -> Vec<PersonType> {
                 };
             }],
         },
-        // TODO: Argo Yesky
+        person_type! {
+            name: "Argo Yesky",
+            num_in_deck: 1,
+            junk_effect: IconEffect::GainPunk,
+            cost: 3,
+            abilities: [icon_ability(1, IconEffect::Damage)],
+            on_enter_play(game_view) => {
+                // when this card enters play, punk
+                game_view.gain_punk()
+            },
+            special_type: ArgoYesky, // Argo Yesky gives its ability to other people (when uninjured)
+        },
         person_type! {
             name: "Magnus Karv",
             num_in_deck: 1,

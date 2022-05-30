@@ -321,14 +321,32 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         }
 
         // actions to use a person's ability
+
+        let argo_yesky_ability = self
+            .people()
+            .filter_map(|person| match person {
+                Person::NonPunk {
+                    person_type,
+                    status,
+                } if person_type.special_type == SpecialType::ArgoYesky
+                    && *status != NonPunkStatus::Injured =>
+                {
+                    Some(person_type.abilities[0].as_ref())
+                }
+                _ => None,
+            })
+            .next()
+            .filter(|ability| ability.can_afford_and_perform(game_view));
+
         // TODO: make this a little more DRY
         for (loc, person) in self.enumerate_people() {
             match person {
                 Person::Punk { is_ready, .. } => {
-                    // punks don't have abilities
-                    // TODO: unless they're given one by another card
+                    // punks don't have abilities, unless they're given one by another card
                     if *is_ready {
-                        // actions.push(Action::UseAbility(...));
+                        if let Some(argo_yesky_ability) = argo_yesky_ability {
+                            actions.push(Action::UsePersonAbility(argo_yesky_ability, loc));
+                        }
                     }
                 }
                 Person::NonPunk {
@@ -336,9 +354,18 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
                     status,
                 } => {
                     if *status == NonPunkStatus::Ready {
+                        // the person's own abilities
                         for ability in &person_type.abilities {
                             if ability.can_afford_and_perform(game_view) {
                                 actions.push(Action::UsePersonAbility(ability.as_ref(), loc));
+                            }
+                        }
+
+                        // Argo Yesky's ability (if in effect)
+                        if person_type.special_type != SpecialType::ArgoYesky {
+                            // TODO: somehow dedup abilities better?
+                            if let Some(argo_yesky_ability) = argo_yesky_ability {
+                                actions.push(Action::UsePersonAbility(argo_yesky_ability, loc));
                             }
                         }
 
