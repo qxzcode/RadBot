@@ -280,6 +280,16 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         })
     }
 
+    /// Returns the nth person (and its location) on this player's board, by some arbitrary
+    /// but stable ordering.
+    ///
+    /// Panics if `n` is greater or equal to the number of people this player has.
+    pub fn nth_person(&self, n: usize) -> (PlayLocation, &Person<'ctype>) {
+        self.enumerate_people()
+            .nth(n)
+            .expect("nth_person: n is too large")
+    }
+
     /// Returns the actions that this player can take given a view for them.
     pub fn actions(&self, game_view: &'v GameView<'g, 'ctype>) -> Vec<Action<'ctype>> {
         // this is a hot function, so pre-reserve enough capacity for most cases
@@ -570,11 +580,8 @@ impl<'ctype> CardColumn<'ctype> {
 
     /// Returns an iterator over the locations of any damaged and restorable cards in this column.
     pub fn restorable_card_rows(&self) -> impl Iterator<Item = CardRowIndex> + '_ {
-        let restorable_camp_row = if self.camp.is_restorable() {
-            Some(CardRowIndex::camp())
-        } else {
-            None
-        };
+        let restorable_camp_row =
+            if self.camp.is_restorable() { Some(CardRowIndex::camp()) } else { None };
         let restorable_person_rows =
             self.person_slots
                 .iter()
@@ -620,11 +627,7 @@ impl<'ctype> CardColumn<'ctype> {
     /// Returns an iterator over the row indices of the cards in the column (people or non-destroyed
     /// camp).
     pub fn card_rows(&self) -> impl Iterator<Item = CardRowIndex> + '_ {
-        let camp_row = if self.camp.is_destroyed() {
-            None
-        } else {
-            Some(CardRowIndex::camp())
-        };
+        let camp_row = if self.camp.is_destroyed() { None } else { Some(CardRowIndex::camp()) };
         let person_rows = self
             .person_slots
             .iter()
@@ -667,11 +670,7 @@ impl Camp<'_> {
     pub fn damage(&mut self, destroy: bool) {
         match self.status {
             CampStatus::Undamaged => {
-                self.status = if destroy {
-                    CampStatus::Destroyed
-                } else {
-                    CampStatus::Damaged
-                };
+                self.status = if destroy { CampStatus::Destroyed } else { CampStatus::Damaged };
             }
             CampStatus::Damaged => self.status = CampStatus::Destroyed,
             CampStatus::Destroyed => panic!("Tried to damage a destroyed camp"),

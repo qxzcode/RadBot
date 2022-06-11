@@ -4,6 +4,8 @@ use itertools::Itertools;
 
 use super::locations::*;
 use super::player_state::Person;
+use super::styles::StyledName;
+use super::GameView;
 use super::{Action, GameResult, GameState, IconEffect};
 
 /// A choice between several options that must be made by a player, along with the logic for
@@ -20,12 +22,140 @@ pub enum Choice<'ctype> {
     DamageColumn(DamageColumnChoice<'ctype>), // only used for Magnus Karv's ability
 }
 
-impl<'ctype> Choice<'ctype> {
+impl<'v, 'g: 'v, 'ctype: 'g> Choice<'ctype> {
     /// Returns a choice for top-level turn Actions for the current player.
     pub fn new_actions(game_state: &mut GameState<'ctype>) -> Choice<'ctype> {
         let view = game_state.view_for_cur();
         let actions = view.my_state().actions(&view);
         Choice::Action(ActionChoice { actions })
+    }
+
+    /// Returns the number of options available for this choice.
+    pub fn num_options(&self, game_state: &GameState<'ctype>) -> usize {
+        match self {
+            Choice::Action(action_choice) => action_choice.actions().len(),
+            Choice::PlayLoc(play_choice) => play_choice.locations().len(),
+            Choice::Damage(damage_choice) => damage_choice.locations().len(),
+            Choice::Restore(restore_choice) => restore_choice.locations().len(),
+            Choice::IconEffect(icon_effect_choice) => icon_effect_choice.icon_effects().len() + 1,
+            Choice::RescuePerson(rescue_person_choice) => game_state
+                .player(rescue_person_choice.chooser())
+                .people()
+                .count(),
+            Choice::MoveEvents(_move_events_choice) => 2,
+            Choice::DamageColumn(damage_column_choice) => damage_column_choice.columns().len(),
+        }
+    }
+
+    /// Returns which player must make the choice.
+    pub fn chooser(&self, game_state: &GameState<'ctype>) -> Player {
+        match self {
+            Choice::Action(_action_choice) => game_state.cur_player,
+            Choice::PlayLoc(play_choice) => play_choice.chooser(),
+            Choice::Damage(damage_choice) => damage_choice.chooser(),
+            Choice::Restore(restore_choice) => restore_choice.chooser(),
+            Choice::IconEffect(icon_effect_choice) => icon_effect_choice.chooser(),
+            Choice::RescuePerson(rescue_person_choice) => rescue_person_choice.chooser(),
+            Choice::MoveEvents(move_events_choice) => move_events_choice.chooser(),
+            Choice::DamageColumn(damage_column_choice) => damage_column_choice.chooser(),
+        }
+    }
+
+    /// Chooses the option with the given index, updating the game state and
+    /// returning the next Choice.
+    ///
+    /// Panics if the index is is greater than equal to the number of options for this choice.
+    pub fn choose(
+        &self,
+        game_state: &'g mut GameState<'ctype>,
+        option: usize,
+    ) -> Result<Choice<'ctype>, GameResult> {
+        match self {
+            Choice::Action(action_choice) => {
+                action_choice.choose(game_state, &action_choice.actions()[option])
+            }
+            Choice::PlayLoc(play_choice) => {
+                play_choice.choose(game_state, play_choice.locations()[option])
+            }
+            Choice::Damage(damage_choice) => {
+                damage_choice.choose(game_state, damage_choice.locations()[option])
+            }
+            Choice::Restore(restore_choice) => {
+                restore_choice.choose(game_state, restore_choice.locations()[option])
+            }
+            Choice::IconEffect(icon_effect_choice) => {
+                let icon_effect = if option == 0 {
+                    None
+                } else {
+                    Some(icon_effect_choice.icon_effects()[option - 1])
+                };
+                icon_effect_choice.choose(game_state, icon_effect)
+            }
+            Choice::RescuePerson(rescue_person_choice) => {
+                let (location, _) = game_state
+                    .player(rescue_person_choice.chooser())
+                    .nth_person(option);
+                rescue_person_choice.choose(game_state, location)
+            }
+            Choice::MoveEvents(move_events_choice) => move_events_choice.choose(
+                game_state,
+                match option {
+                    0 => false,
+                    1 => true,
+                    _ => panic!("Invalid option for Choice::MoveEvents"),
+                },
+            ),
+            Choice::DamageColumn(damage_column_choice) => {
+                damage_column_choice.choose(game_state, damage_column_choice.columns()[option])
+            }
+        }
+    }
+
+    /// Formats the option with the given index for human-readable display.
+    ///
+    /// Panics if the index is is greater than equal to the number of options for this choice.
+    pub fn format_option(&self, option: usize, game_view: &'v GameView<'g, 'ctype>) -> String {
+        match self {
+            Choice::Action(action_choice) => action_choice.actions()[option].format(game_view),
+            Choice::PlayLoc(play_choice) => format!(
+                "Play {} at {:?}",
+                play_choice.person().styled_name(),
+                play_choice.locations()[option],
+            ),
+            Choice::Damage(damage_choice) => format!(
+                "{} {:?}",
+                if damage_choice.destroy() { "Destroy" } else { "Damage" },
+                damage_choice.locations()[option],
+            ),
+            Choice::Restore(restore_choice) => {
+                format!("Restore {:?}", restore_choice.locations()[option])
+            }
+            Choice::IconEffect(icon_effect_choice) => {
+                if option == 0 {
+                    "Don't use an icon effect".to_string()
+                } else {
+                    format!(
+                        "Use icon effect {:?}",
+                        icon_effect_choice.icon_effects()[option - 1],
+                    )
+                }
+            }
+            Choice::RescuePerson(rescue_person_choice) => {
+                let (location, person) = game_view
+                    .game_state
+                    .player(rescue_person_choice.chooser())
+                    .nth_person(option);
+                format!("Rescue {} at {:?}", person.styled_name(), location)
+            }
+            Choice::MoveEvents(_move_events_choice) => match option {
+                0 => "Don't move events back".to_string(),
+                1 => "Move events back".to_string(),
+                _ => panic!("Invalid option for Choice::MoveEvents"),
+            },
+            Choice::DamageColumn(damage_column_choice) => {
+                format!("Damage column {:?}", damage_column_choice.columns()[option])
+            }
+        }
     }
 }
 

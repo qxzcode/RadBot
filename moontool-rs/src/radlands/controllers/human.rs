@@ -7,8 +7,6 @@ use std::str::FromStr;
 use crate::radlands::choices::*;
 use crate::radlands::*;
 
-use super::icon_effects_with_none;
-
 /// A `PlayerController` that allows manual, human input.
 pub struct HumanController {
     pub label: &'static str,
@@ -37,14 +35,12 @@ impl HumanController {
             }
         }
     }
-}
 
-impl PlayerController for HumanController {
     fn choose_action<'a, 'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
         choice: &'a ActionChoice<'ctype>,
-    ) -> &'a Action<'ctype> {
+    ) -> usize {
         let actions = choice.actions();
 
         // print the game state
@@ -59,14 +55,14 @@ impl PlayerController for HumanController {
 
         // prompt the user for an action
         let action_number = self.prompt_for_number("Choose an action: ", 1..=actions.len());
-        &actions[action_number - 1]
+        action_number - 1
     }
 
     fn choose_play_location<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
         choice: &PlayChoice<'ctype>,
-    ) -> PlayLocation {
+    ) -> usize {
         let person = choice.person();
         let locations = choice.locations();
 
@@ -91,14 +87,14 @@ impl PlayerController for HumanController {
             &format!("Choose a location to play {}: ", person.styled_name()),
             1..=locations.len(),
         );
-        locations[loc_number - 1]
+        loc_number - 1
     }
 
     fn choose_card_to_damage<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
         choice: &DamageChoice<'ctype>,
-    ) -> CardLocation {
+    ) -> usize {
         let target_locs = choice.locations();
         let destroy = choice.destroy();
 
@@ -108,44 +104,27 @@ impl PlayerController for HumanController {
             if destroy { "destroy" } else { "damage" }
         );
         let loc_number = self.prompt_for_number(&prompt, 1..=target_locs.len());
-        target_locs[loc_number - 1]
+        loc_number - 1
     }
 
     fn choose_card_to_restore<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
         choice: &RestoreChoice<'ctype>,
-    ) -> PlayerCardLocation {
+    ) -> usize {
         let target_locs = choice.locations();
 
         print_player_card_selection(game_view.game_state, game_view.player, target_locs);
         let loc_number =
             self.prompt_for_number("Choose a card to restore: ", 1..=target_locs.len());
-        target_locs[loc_number - 1]
-    }
-
-    fn choose_icon_effect<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        _game_view: &'v GameView<'g, 'ctype>,
-        choice: &IconEffectChoice<'ctype>,
-    ) -> Option<IconEffect> {
-        let icon_effects = icon_effects_with_none(choice.icon_effects());
-        for (i, icon_effect) in icon_effects.iter().enumerate() {
-            if let Some(icon_effect) = icon_effect {
-                println!("  ({})  {icon_effect:?}", i + 1);
-            } else {
-                println!("  ({})  <none>", i + 1);
-            }
-        }
-        let effect_number = self.prompt_for_number("Choose an effect: ", 1..=icon_effects.len());
-        icon_effects[effect_number - 1]
+        loc_number - 1
     }
 
     fn choose_person_to_rescue<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
         _choice: &RescuePersonChoice<'ctype>,
-    ) -> PlayLocation {
+    ) -> usize {
         let target_locs = game_view.my_state().person_locs().collect_vec();
 
         print_player_card_selection(
@@ -155,22 +134,14 @@ impl PlayerController for HumanController {
         );
         let loc_number =
             self.prompt_for_number("Choose a person to rescue: ", 1..=target_locs.len());
-        target_locs[loc_number - 1]
-    }
-
-    fn choose_to_move_events<'v, 'g: 'v, 'ctype: 'g>(
-        &self,
-        _game_view: &'v GameView<'g, 'ctype>,
-        _choice: &MoveEventsChoice<'ctype>,
-    ) -> bool {
-        self.prompt_for_number("Move opponent events back 1 space? (0=no, 1=yes) ", 0..=1) == 1
+        loc_number - 1
     }
 
     fn choose_column_to_damage<'v, 'g: 'v, 'ctype: 'g>(
         &self,
         game_view: &'v GameView<'g, 'ctype>,
         choice: &DamageColumnChoice<'ctype>,
-    ) -> ColumnIndex {
+    ) -> usize {
         print_player_card_selection(
             game_view.game_state,
             game_view.player.other(),
@@ -182,7 +153,40 @@ impl PlayerController for HumanController {
         );
         let column_number =
             self.prompt_for_number("Choose a column to damage: ", 1..=choice.columns().len());
-        choice.columns()[column_number - 1]
+        column_number - 1
+    }
+}
+
+impl<'ctype> PlayerController<'ctype> for HumanController {
+    fn choose_option<'g>(
+        &self,
+        game_view: &GameView<'g, 'ctype>,
+        choice: &Choice<'ctype>,
+    ) -> usize {
+        match choice {
+            Choice::Action(choice) => self.choose_action(game_view, choice),
+            Choice::PlayLoc(choice) => self.choose_play_location(game_view, choice),
+            Choice::Damage(choice) => self.choose_card_to_damage(game_view, choice),
+            Choice::Restore(choice) => self.choose_card_to_restore(game_view, choice),
+            Choice::RescuePerson(choice) => self.choose_person_to_rescue(game_view, choice),
+            Choice::DamageColumn(choice) => self.choose_column_to_damage(game_view, choice),
+            _ => {
+                // print the available options
+                println!("Available options:");
+                let num_options = choice.num_options(game_view.game_state);
+                for option_index in 0..num_options {
+                    let option_num = format!("({})", option_index + 1);
+                    println!(
+                        "{option_num:>5}  {}",
+                        choice.format_option(option_index, game_view),
+                    );
+                }
+
+                // prompt the user for an option
+                let option_number = self.prompt_for_number("Choose an option: ", 1..=num_options);
+                option_number - 1
+            }
+        }
     }
 }
 

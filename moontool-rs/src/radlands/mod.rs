@@ -819,16 +819,8 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                     ""
                 },
                 card.cost,
-                if card.on_enter_play.is_some() {
-                    " <has on-enter-play effect>"
-                } else {
-                    ""
-                },
-                if card.enters_play_ready {
-                    " <enters play ready>"
-                } else {
-                    ""
-                },
+                if card.on_enter_play.is_some() { " <has on-enter-play effect>" } else { "" },
+                if card.enters_play_ready { " <enters play ready>" } else { "" },
             ),
             Action::PlayHoldout(card) => format!(
                 "Play {} in column with destroyed camp (costs {WATER}0 water{RESET})",

@@ -80,7 +80,7 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType], args: &Args) {
     } else {
         let ai_time_limit = Duration::from_secs_f64(args.ai_time_limit);
         println!("AI time limit: {:?}", ai_time_limit);
-        p1 = Box::new(MonteCarloController::<_, _, false> {
+        p1 = Box::new(MonteCarloController::<_, false> {
             player: Player::Player1,
             choice_time_limit: ai_time_limit,
             make_rollout_controller: |_| RandomController { quiet: true },
@@ -108,8 +108,8 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType], args: &Args) {
 pub fn play_to_end<'ctype>(
     game_state: &mut GameState<'ctype>,
     mut choice: Choice<'ctype>,
-    p1: &dyn PlayerController,
-    p2: &dyn PlayerController,
+    p1: &dyn PlayerController<'ctype>,
+    p2: &dyn PlayerController<'ctype>,
 ) -> GameResult {
     loop {
         match do_one_choice(game_state, &choice, p1, p2) {
@@ -122,48 +122,19 @@ pub fn play_to_end<'ctype>(
 fn do_one_choice<'ctype>(
     game_state: &mut GameState<'ctype>,
     choice: &Choice<'ctype>,
-    p1: &dyn PlayerController,
-    p2: &dyn PlayerController,
+    p1: &dyn PlayerController<'ctype>,
+    p2: &dyn PlayerController<'ctype>,
 ) -> Result<Choice<'ctype>, GameResult> {
-    let get_controller_for = |player: Player| match player {
+    // get the choosing player and their controller
+    let chooser = choice.chooser(game_state);
+    let controller = match chooser {
         Player::Player1 => p1,
         Player::Player2 => p2,
     };
 
-    macro_rules! do_choice {
-        {
-            $(for $chooser:expr, $Variant:ident => $choose_func:ident);+ ;
-            $($Variant2:ident => $choose_func2:ident);+ ;
-        } => {
-            match choice {
-                $(
-                    Choice::$Variant(choice) => {
-                        let chooser = $chooser;
-                        let chosen_option = get_controller_for(chooser)
-                            .$choose_func(&game_state.view_for(chooser), choice);
-                        choice.choose(game_state, chosen_option)
-                    }
-                )+
-                $(
-                    Choice::$Variant2(choice) => {
-                        let chooser = choice.chooser();
-                        let chosen_option = get_controller_for(chooser)
-                            .$choose_func2(&game_state.view_for(chooser), choice);
-                        choice.choose(game_state, chosen_option)
-                    }
-                )+
-            }
-        };
-    }
+    // have the controller choose an option
+    let chosen_option = controller.choose_option(&game_state.view_for(chooser), choice);
 
-    do_choice! {
-        for game_state.cur_player, Action => choose_action;
-        PlayLoc => choose_play_location;
-        Damage => choose_card_to_damage;
-        Restore => choose_card_to_restore;
-        IconEffect => choose_icon_effect;
-        RescuePerson => choose_person_to_rescue;
-        MoveEvents => choose_to_move_events;
-        DamageColumn => choose_column_to_damage;
-    }
+    // apply the choice to the game state
+    choice.choose(game_state, chosen_option)
 }
