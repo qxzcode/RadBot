@@ -1,0 +1,269 @@
+use rand::thread_rng;
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
+use std::fmt;
+use std::time::{Duration, Instant};
+
+use crate::radlands::choices::*;
+use crate::radlands::observed_state::ObservedState;
+use crate::radlands::*;
+
+use super::monte_carlo::{
+    compute_rollout_score, get_best_options, get_score, print_option_stats, randomize_unobserved,
+    OptionStats,
+};
+
+#[derive(Debug, Clone)]
+struct StateStats {
+    options: Vec<OptionStats>,
+    num_rollouts: u32,
+    last_visit_ply: u32,
+}
+
+impl StateStats {
+    fn new(num_options: usize, current_ply: u32) -> Self {
+        debug_assert!(num_options > 1, "Expanded a state with less than 2 options");
+        Self {
+            options: vec![
+                OptionStats {
+                    num_rollouts: 0,
+                    total_score: 0,
+                };
+                num_options
+            ],
+            num_rollouts: 0,
+            last_visit_ply: current_ply,
+        }
+    }
+}
+
+pub struct MCTSController<'ctype, F, const QUIET: bool = false> {
+    pub player: Player,
+    pub choice_time_limit: Duration,
+    pub make_rollout_controller: F,
+
+    explored_states: HashMap<ObservedState<'ctype>, StateStats>,
+    current_ply: u32,
+}
+
+impl<'g, 'ctype: 'g, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIET: bool>
+    MCTSController<'ctype, F, QUIET>
+{
+    pub fn new(player: Player, choice_time_limit: Duration, make_rollout_controller: F) -> Self {
+        Self {
+            player,
+            choice_time_limit,
+            make_rollout_controller,
+            explored_states: HashMap::new(),
+            current_ply: 0,
+        }
+    }
+
+    fn get_root_option_stats(
+        &self,
+        game_view: &GameView<'g, 'ctype>,
+        choice: &Choice<'ctype>,
+    ) -> (u32, &[OptionStats]) {
+        let game_state = &game_view.game_state;
+        let chooser = choice.chooser(game_state);
+        let observed_state = ObservedState::from_game_state(game_state, choice, chooser);
+        self.explored_states
+            .get(&observed_state)
+            .map(|stats| (stats.num_rollouts, stats.options.as_slice()))
+            .expect("root state not explored")
+    }
+
+    fn print_root_option_stats(
+        &self,
+        game_view: &GameView<'g, 'ctype>,
+        choice: &Choice<'ctype>,
+        is_first_print: bool,
+    ) {
+        let (rollouts, option_stats) = self.get_root_option_stats(game_view, choice);
+        print_option_stats(option_stats, rollouts, game_view, choice, is_first_print);
+    }
+
+    fn prune_explored_states(&mut self) {
+        let start_time = Instant::now();
+        let start_count = self.explored_states.len();
+
+        const PAST_PLIES_TO_KEEP: u32 = 5;
+        if self.current_ply > PAST_PLIES_TO_KEEP {
+            let cutoff_ply = self.current_ply - PAST_PLIES_TO_KEEP;
+            self.explored_states
+                .retain(|_, state_stats| state_stats.last_visit_ply >= cutoff_ply);
+        }
+
+        println!(
+            "{:?}: pruned {}/{} nodes in {:?}",
+            self,
+            start_count - self.explored_states.len(),
+            start_count,
+            start_time.elapsed(),
+        );
+    }
+
+    /// Runs MCTS to choose an option.
+    fn mcts_choose_impl(
+        &mut self,
+        game_view: &GameView<'g, 'ctype>,
+        choice: &Choice<'ctype>,
+    ) -> usize {
+        // return immediately without searching if there's only one option
+        let num_options = choice.num_options(game_view.game_state);
+        if num_options == 1 {
+            return 0;
+        }
+
+        let start_time = Instant::now();
+
+        self.current_ply += 1;
+        self.prune_explored_states();
+
+        let mut has_printed = false;
+        let mut last_print_time = start_time;
+        let mut num_samples = 0;
+        while start_time.elapsed() < self.choice_time_limit {
+            // sample a sequence of moves and update the tree
+            let mut game_state = randomize_unobserved(game_view.game_state);
+            self.sample_move(&mut game_state, choice);
+            num_samples += 1;
+
+            // update the live stats display
+            if !QUIET {
+                let now = Instant::now();
+                let elapsed = now.duration_since(last_print_time);
+                if !has_printed || elapsed > Duration::from_millis(100) {
+                    self.print_root_option_stats(game_view, choice, !has_printed);
+                    has_printed = true;
+                    last_print_time = now;
+                }
+            }
+        }
+        if !QUIET {
+            self.print_root_option_stats(game_view, choice, !has_printed);
+            println!(
+                "{:?}: performed {} samples in {:?}",
+                self,
+                num_samples,
+                start_time.elapsed(),
+            );
+        }
+
+        // return a random best (maximum visit count) choice
+        *get_best_options(self.get_root_option_stats(game_view, choice).1)
+            .choose(&mut thread_rng())
+            .unwrap()
+    }
+
+    /// Samples a move that a player might make from a state, updating the search tree.
+    /// Returns a tuple of (chosen option index, rollout score for Player 1).
+    fn sample_move(
+        &mut self,
+        game_state: &mut GameState<'ctype>,
+        choice: &Choice<'ctype>,
+    ) -> (usize, u32) {
+        // immediately continue to the next move if there's only one option
+        let num_options = choice.num_options(game_state);
+        if num_options == 1 {
+            let score = match choice.choose(game_state, 0) {
+                Err(game_result) => get_score(game_result, Player::Player1),
+                Ok(next_choice) => self.sample_move(game_state, &next_choice).1,
+            };
+            return (0, score);
+        }
+
+        // get which player needs to make a move
+        let chooser = choice.chooser(game_state);
+
+        // get the observed state of the game (hash table key)
+        let observed_state = ObservedState::from_game_state(game_state, choice, chooser);
+
+        // sample an option and the score for Player 1
+        let (option_index, rollout_score) = match self.explored_states.entry(observed_state.clone())
+        {
+            Entry::Vacant(entry) => {
+                // this is the first time we've seen this state, so create a new entry
+                entry.insert(StateStats::new(num_options, self.current_ply));
+
+                // at leaf nodes, start by sampling a random option
+                let first_move = thread_rng().gen_range(0..num_options);
+
+                // perform a rollout from this state
+                let final_score = compute_rollout_score(
+                    Player::Player1,
+                    game_state,
+                    choice,
+                    &self.make_rollout_controller,
+                    first_move,
+                );
+
+                (first_move, final_score)
+            }
+            Entry::Occupied(entry) => {
+                // this state has been seen before; get the stored stats
+                let state_stats = entry.into_mut();
+                state_stats.last_visit_ply = self.current_ply;
+
+                // choose an option based on the current stats
+                let (option_index, _) = state_stats
+                    .options
+                    .iter()
+                    .enumerate()
+                    .max_by_key(|(_, option_stats)| {
+                        option_stats.puct_score(state_stats.num_rollouts)
+                    })
+                    .unwrap();
+
+                // get the next state and recurse (or return the result if the game ended)
+                let score = match choice.choose(game_state, option_index) {
+                    Err(game_result) => get_score(game_result, Player::Player1),
+                    Ok(next_choice) => self.sample_move(game_state, &next_choice).1,
+                };
+
+                (option_index, score)
+            }
+        };
+
+        // update the stats for this option
+        let state_stats = self.explored_states.get_mut(&observed_state).unwrap();
+        state_stats.num_rollouts += 1;
+        let option_stats = &mut state_stats.options[option_index];
+        option_stats.num_rollouts += 1;
+        option_stats.total_score += match chooser {
+            Player::Player1 => rollout_score,
+            Player::Player2 => 2 - rollout_score,
+        };
+
+        // return the chosen option index and rollout score
+        (option_index, rollout_score)
+    }
+}
+
+impl<'ctype, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIET: bool>
+    PlayerController<'ctype> for MCTSController<'ctype, F, QUIET>
+{
+    fn choose_option<'g>(
+        &mut self,
+        game_view: &GameView<'g, 'ctype>,
+        choice: &Choice<'ctype>,
+    ) -> usize {
+        if !QUIET && matches!(choice, Choice::Action(_)) {
+            println!("\nBoard state:\n{}", game_view.game_state);
+        }
+        let chosen_option = self.mcts_choose_impl(game_view, choice);
+        if !QUIET {
+            println!(
+                "{BOLD}{self:?} chose:{RESET} {}",
+                choice.format_option(chosen_option, game_view),
+            );
+        }
+        chosen_option
+    }
+}
+
+impl<F, const QUIET: bool> fmt::Debug for MCTSController<'_, F, QUIET> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "MCTSController[{:?}]", self.player)
+    }
+}

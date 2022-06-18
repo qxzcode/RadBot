@@ -51,14 +51,15 @@ pub fn compute_rollout_score<'ctype, C: PlayerController<'ctype>>(
         Ok(choice) => play_to_end(
             &mut game_state,
             choice,
-            &(make_rollout_controller)(Player::Player1),
-            &(make_rollout_controller)(Player::Player2),
+            &mut (make_rollout_controller)(Player::Player1),
+            &mut (make_rollout_controller)(Player::Player2),
         ),
     };
 
     get_score(game_result, for_player)
 }
 
+#[derive(Debug, Clone)]
 pub struct OptionStats {
     pub num_rollouts: u32,
     pub total_score: u32,
@@ -66,8 +67,12 @@ pub struct OptionStats {
 
 impl OptionStats {
     pub fn win_rate(&self) -> NotNan<f64> {
-        let win_rate = (self.total_score as f64) / ((self.num_rollouts * 2) as f64);
-        NotNan::new(win_rate).expect("win rate is NaN")
+        if self.num_rollouts == 0 {
+            NotNan::new(0.5).unwrap()
+        } else {
+            let win_rate = (self.total_score as f64) / ((self.num_rollouts * 2) as f64);
+            NotNan::new(win_rate).expect("win rate is NaN")
+        }
     }
 
     /// The UCB1 score for a choice.
@@ -75,10 +80,19 @@ impl OptionStats {
     pub fn ucb1_score(&self, rollout_num: usize) -> NotNan<f64> {
         self.win_rate() + (2.0 * (rollout_num as f64).ln() / (self.num_rollouts as f64)).sqrt()
     }
+
+    /// A variant of the PUCT score, similar to that used in AlphaZero.
+    pub fn puct_score(&self, parent_rollouts: u32) -> NotNan<f64> {
+        let exploration_rate = 1.0; // TODO: make this a tunable parameter
+        let exploration_score =
+            exploration_rate * (parent_rollouts as f64).sqrt() / ((1 + self.num_rollouts) as f64);
+        self.win_rate() + exploration_score
+    }
 }
 
 pub fn print_option_stats<'g, 'ctype: 'g>(
     option_stats_vec: &[OptionStats],
+    parent_rollouts: u32,
     game_view: &GameView<'g, 'ctype>,
     choice: &Choice<'ctype>,
     is_first_print: bool,
@@ -98,8 +112,9 @@ pub fn print_option_stats<'g, 'ctype: 'g>(
 
     for (option_index, option_stats) in option_stats_vec.iter().enumerate() {
         let mut stats_str = format!(
-            "{:6}  {:6.2}%",
+            "{:8}  {:6.2}%  {:6.2}%",
             option_stats.num_rollouts,
+            (option_stats.num_rollouts as f64) / (parent_rollouts as f64) * 100.0,
             option_stats.win_rate() * 100.0,
         );
         if option_stats.num_rollouts == max_visit_count {
@@ -113,7 +128,7 @@ pub fn print_option_stats<'g, 'ctype: 'g>(
     }
 }
 
-pub fn get_best_options(option_stats_vec: Vec<OptionStats>) -> Vec<usize> {
+pub fn get_best_options(option_stats_vec: &[OptionStats]) -> Vec<usize> {
     let max_visit_count = option_stats_vec
         .iter()
         .map(|option_stats| option_stats.num_rollouts)
@@ -162,11 +177,12 @@ impl<'ctype, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIET: bool>
             })
             .collect_vec();
 
-        if !QUIET {
-            print_option_stats(&option_stats_vec, game_view, choice, true);
-        }
         let mut last_print_time = start_time;
         let mut rollout_num = num_options;
+        if !QUIET {
+            let rollout_num: u32 = rollout_num.try_into().unwrap();
+            print_option_stats(&option_stats_vec, rollout_num, game_view, choice, true);
+        }
         while start_time.elapsed() < self.choice_time_limit {
             // choose a choice to simulate using UCB1
             let (option_index, option_stats) = option_stats_vec
@@ -191,17 +207,19 @@ impl<'ctype, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIET: bool>
                 let now = Instant::now();
                 let elapsed = now.duration_since(last_print_time);
                 if elapsed > Duration::from_millis(100) {
-                    print_option_stats(&option_stats_vec, game_view, choice, false);
+                    let rollout_num: u32 = rollout_num.try_into().unwrap();
+                    print_option_stats(&option_stats_vec, rollout_num, game_view, choice, false);
                     last_print_time = now;
                 }
             }
         }
         if !QUIET {
-            print_option_stats(&option_stats_vec, game_view, choice, false);
+            let rollout_num: u32 = rollout_num.try_into().unwrap();
+            print_option_stats(&option_stats_vec, rollout_num, game_view, choice, false);
         }
 
         // return a random best (maximum visit count) choice
-        *get_best_options(option_stats_vec)
+        *get_best_options(&option_stats_vec)
             .choose(&mut thread_rng())
             .unwrap()
     }
@@ -211,7 +229,7 @@ impl<'ctype, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIET: bool>
     PlayerController<'ctype> for MonteCarloController<F, QUIET>
 {
     fn choose_option<'g>(
-        &self,
+        &mut self,
         game_view: &GameView<'g, 'ctype>,
         choice: &Choice<'ctype>,
     ) -> usize {

@@ -3,6 +3,7 @@ pub mod camps;
 pub mod choices;
 pub mod controllers;
 pub mod locations;
+pub mod observed_state;
 pub mod people;
 pub mod player_state;
 pub mod styles;
@@ -11,6 +12,7 @@ use by_address::ByAddress;
 use itertools::Itertools;
 use rand::seq::SliceRandom;
 use rand::{thread_rng, Rng};
+use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::mem;
@@ -922,6 +924,25 @@ impl PartialEq for PersonOrEventType<'_> {
     }
 }
 impl Eq for PersonOrEventType<'_> {}
+impl Ord for PersonOrEventType<'_> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (*self, *other) {
+            (PersonOrEventType::Person(person), PersonOrEventType::Person(other_person)) => {
+                ByAddress(person).cmp(&ByAddress(other_person))
+            }
+            (PersonOrEventType::Event(event), PersonOrEventType::Event(other_event)) => {
+                ByAddress(event).cmp(&ByAddress(other_event))
+            }
+            (PersonOrEventType::Person(_), PersonOrEventType::Event(_)) => Ordering::Less,
+            (PersonOrEventType::Event(_), PersonOrEventType::Person(_)) => Ordering::Greater,
+        }
+    }
+}
+impl PartialOrd for PersonOrEventType<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
 
 /// Trait for a type of event card.
 pub trait EventType: fmt::Debug {

@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 
+use by_address::ByAddress;
 use itertools::Itertools;
 
 use super::abilities::*;
@@ -54,6 +56,21 @@ pub struct PersonType {
     /// handling elsewhere in the code.
     pub special_type: SpecialType,
 }
+
+// hash references by address
+impl Hash for &PersonType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        ByAddress(*self).hash(state);
+    }
+}
+
+// compare references by address
+impl PartialEq for &PersonType {
+    fn eq(&self, other: &Self) -> bool {
+        ByAddress(*self) == ByAddress(*other)
+    }
+}
+impl Eq for &PersonType {}
 
 impl fmt::Debug for PersonType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

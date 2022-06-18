@@ -159,7 +159,7 @@ impl HumanController {
 
 impl<'ctype> PlayerController<'ctype> for HumanController {
     fn choose_option<'g>(
-        &self,
+        &mut self,
         game_view: &GameView<'g, 'ctype>,
         choice: &Choice<'ctype>,
     ) -> usize {

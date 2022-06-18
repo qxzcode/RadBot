@@ -512,7 +512,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct CardColumn<'ctype> {
     /// The column's camp.
     pub camp: Camp<'ctype>,
@@ -650,7 +650,7 @@ impl<'ctype> CardColumn<'ctype> {
 }
 
 /// A camp on the board.
-#[derive(Clone)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub struct Camp<'ctype> {
     /// The camp type.
     pub camp_type: &'ctype CampType,
@@ -735,7 +735,7 @@ pub enum CampStatus {
 }
 
 /// A person played on the board (a punk or face-up person).
-#[derive(Clone, Debug)]
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum Person<'ctype> {
     Punk {
         /// The identity of the face-down card.

@@ -11,8 +11,8 @@ use radlands::people::PersonType;
 use radlands::*;
 
 use radlands::controllers::{
-    human::HumanController, monte_carlo::MonteCarloController, random::RandomController,
-    PlayerController,
+    human::HumanController, mcts::MCTSController, monte_carlo::MonteCarloController,
+    random::RandomController, PlayerController,
 };
 
 fn validate_secs(s: &str) -> Result<(), String> {
@@ -69,8 +69,8 @@ fn main() {
 }
 
 fn do_game(camp_types: &[CampType], person_types: &[PersonType], args: &Args) {
-    let p1: Box<dyn PlayerController>;
-    let p2: Box<dyn PlayerController>;
+    let mut p1: Box<dyn PlayerController>;
+    let mut p2: Box<dyn PlayerController>;
     if args.random {
         p1 = Box::new(RandomController { quiet: true });
         p2 = Box::new(RandomController { quiet: true });
@@ -90,7 +90,7 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType], args: &Args) {
 
     let (mut game_state, choice) = GameState::new(camp_types, person_types);
 
-    let result = play_to_end(&mut game_state, choice, p1.as_ref(), p2.as_ref());
+    let result = play_to_end(&mut game_state, choice, p1.as_mut(), p2.as_mut());
 
     if !args.random {
         println!(
@@ -108,8 +108,8 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType], args: &Args) {
 pub fn play_to_end<'ctype>(
     game_state: &mut GameState<'ctype>,
     mut choice: Choice<'ctype>,
-    p1: &dyn PlayerController<'ctype>,
-    p2: &dyn PlayerController<'ctype>,
+    p1: &mut dyn PlayerController<'ctype>,
+    p2: &mut dyn PlayerController<'ctype>,
 ) -> GameResult {
     loop {
         match do_one_choice(game_state, &choice, p1, p2) {
@@ -119,11 +119,11 @@ pub fn play_to_end<'ctype>(
     }
 }
 
-fn do_one_choice<'ctype>(
+fn do_one_choice<'c, 'ctype>(
     game_state: &mut GameState<'ctype>,
     choice: &Choice<'ctype>,
-    p1: &dyn PlayerController<'ctype>,
-    p2: &dyn PlayerController<'ctype>,
+    p1: &'c mut dyn PlayerController<'ctype>,
+    p2: &'c mut dyn PlayerController<'ctype>,
 ) -> Result<Choice<'ctype>, GameResult> {
     // get the choosing player and their controller
     let chooser = choice.chooser(game_state);

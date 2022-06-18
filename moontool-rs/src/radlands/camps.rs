@@ -1,3 +1,6 @@
+use std::hash::{Hash, Hasher};
+
+use by_address::ByAddress;
 use itertools::Itertools;
 
 use super::choices::DamageChoice;
@@ -16,6 +19,21 @@ pub struct CampType {
     /// The camp's abilities.
     pub abilities: Vec<Box<dyn Ability>>,
 }
+
+// hash references by address
+impl Hash for &CampType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        ByAddress(*self).hash(state);
+    }
+}
+
+// compare references by address
+impl PartialEq for &CampType {
+    fn eq(&self, other: &Self) -> bool {
+        ByAddress(*self) == ByAddress(*other)
+    }
+}
+impl Eq for &CampType {}
 
 pub fn get_camp_types() -> Vec<CampType> {
     vec![
