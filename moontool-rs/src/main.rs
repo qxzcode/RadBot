@@ -1,5 +1,6 @@
 mod cards;
 mod radlands;
+mod ui;
 
 use clap::Parser;
 use std::time::Duration;
@@ -31,6 +32,10 @@ fn validate_secs(s: &str) -> Result<(), String> {
     author = env!("CARGO_PKG_AUTHORS"),
 )]
 struct Args {
+    /// Run with the fancy UI
+    #[clap(short, long)]
+    ui: bool,
+
     /// Play a bunch of random games to fuzz-test the game logic
     #[clap(short, long, conflicts_with = "humans")]
     random: bool,
@@ -57,7 +62,9 @@ fn main() {
     let camp_types = camps::get_camp_types();
     let person_types = people::get_person_types();
 
-    if args.random {
+    if args.ui {
+        ui::main().expect("UI error");
+    } else if args.random {
         let num_games = 100_000;
         println!("Running {} random games...", num_games);
         for _ in 0..num_games {
@@ -112,7 +119,7 @@ pub fn play_to_end<'ctype>(
     p2: &mut dyn PlayerController<'ctype>,
 ) -> GameResult {
     loop {
-        match do_one_choice(game_state, &choice, p1, p2) {
+        match do_one_choice(game_state, &choice, p1, p2).1 {
             Ok(new_choice) => choice = new_choice,
             Err(game_result) => return game_result,
         }
@@ -124,7 +131,7 @@ fn do_one_choice<'c, 'ctype>(
     choice: &Choice<'ctype>,
     p1: &'c mut dyn PlayerController<'ctype>,
     p2: &'c mut dyn PlayerController<'ctype>,
-) -> Result<Choice<'ctype>, GameResult> {
+) -> (usize, Result<Choice<'ctype>, GameResult>) {
     // get the choosing player and their controller
     let chooser = choice.chooser(game_state);
     let controller = match chooser {
@@ -136,5 +143,7 @@ fn do_one_choice<'c, 'ctype>(
     let chosen_option = controller.choose_option(&game_state.view_for(chooser), choice);
 
     // apply the choice to the game state
-    choice.choose(game_state, chosen_option)
+    let choice_result = choice.choose(game_state, chosen_option);
+
+    (chosen_option, choice_result)
 }

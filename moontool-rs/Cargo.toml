@@ -12,6 +12,9 @@ itertools = "0.10"
 crossterm = "0.23"
 ordered-float = "2.10"
 clap = { version = "3.1", features = ["derive"] }
+tui = "0.18"
+lazy_static = "1.4"
+unicode-width = "0.1"
 
 [profile.release]
 lto = true

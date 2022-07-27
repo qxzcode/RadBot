@@ -16,6 +16,9 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::mem;
+use tui::text::{Span, Spans};
+
+use crate::make_spans;
 
 use self::abilities::Ability;
 use self::camps::CampType;
@@ -45,7 +48,7 @@ pub struct GameState<'ctype> {
     pub cur_player: Player,
 
     /// The amount of water that the current player has available for use.
-    cur_player_water: u32,
+    pub cur_player_water: u32,
 
     /// Whether the current player has used the generic "pay 2 water to draw a card"
     /// ability this turn.
@@ -304,8 +307,10 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                 // hoard a huge amount of cards in their hand. The following behavior
                 // is a bit of a hack to stop the game, since it couldn't meaningfully
                 // continue in such a case.
-                eprint!("{ERROR}Tried to draw, but both deck and discard are empty! ");
-                eprintln!("Ending game with a tie.{RESET}");
+                eprint!("\x1b[91m");
+                eprint!("Tried to draw, but both deck and discard are empty! ");
+                eprint!("Ending game with a tie.");
+                eprintln!("\x1b[0m");
                 return Err(GameResult::Tie);
             }
 
@@ -670,6 +675,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
 }
 
 /// An action that can be performed by a player during their turn.
+#[derive(Clone)]
 pub enum Action<'ctype> {
     /// Play a person card from the hand onto the board.
     /// If the card is "Holdout", then this action only allows playing into a column
@@ -810,56 +816,59 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
     }
 
     /// Formats the action for display.
-    pub fn format(&self, game_view: &'v GameView<'g, 'ctype>) -> String {
+    pub fn format(&self, game_view: &'v GameView<'g, 'ctype>) -> Spans<'ctype> {
         match *self {
-            Action::PlayPerson(card) => format!(
-                "Play {}{} (costs {WATER}{} water{RESET}){}{}",
+            Action::PlayPerson(card) => make_spans!(
+                "Play ",
                 card.styled_name(),
                 if card.special_type == SpecialType::Holdout {
                     " in column without destroyed camp"
                 } else {
                     ""
                 },
-                card.cost,
+                WATER_COST: card.cost,
                 if card.on_enter_play.is_some() { " <has on-enter-play effect>" } else { "" },
                 if card.enters_play_ready { " <enters play ready>" } else { "" },
             ),
-            Action::PlayHoldout(card) => format!(
-                "Play {} in column with destroyed camp (costs {WATER}0 water{RESET})",
+            Action::PlayHoldout(card) => make_spans!(
+                "Play ",
                 card.styled_name(),
+                " in column with destroyed camp",
+                WATER_COST: 0,
             ),
-            Action::PlayEvent(card) => format!(
-                "Play {} (costs {WATER}{} water{RESET})",
+            Action::PlayEvent(card) => make_spans!(
+                "Play ",
                 card.styled_name(),
-                card.cost()
+                WATER_COST: card.cost(),
             ),
-            Action::DrawCard => format!("Draw a card (costs {WATER}2 water{RESET})"),
-            Action::JunkCard(card) => format!(
-                "Junk {} (effect: {:?})",
+            Action::DrawCard => make_spans!(
+                "Draw a card",
+                WATER_COST: 2,
+            ),
+            Action::JunkCard(card) => make_spans!(
+                "Junk ",
                 card.styled_name(),
-                card.junk_effect()
+                format!(" (effect: {:?})", card.junk_effect()),
             ),
-            Action::UsePersonAbility(ability, location) => {
-                format!(
-                    "Use {}'s ability: {} (costs {WATER}{} water{RESET})",
-                    game_view
-                        .my_state()
-                        .person_slot(location)
-                        .unwrap()
-                        .styled_name(),
-                    ability.description(),
-                    ability.cost(game_view)
-                )
-            }
-            Action::UseCampAbility(ability, column_index) => {
-                format!(
-                    "Use {}'s ability: {} (costs {WATER}{} water{RESET})",
-                    game_view.my_state().column(column_index).camp.styled_name(),
-                    ability.description(),
-                    ability.cost(game_view)
-                )
-            }
-            Action::EndTurn => format!("End turn, taking {WATER}Water Silo{RESET} if possible"),
+            Action::UsePersonAbility(ability, location) => make_spans!(
+                "Use ",
+                game_view.my_state().person_slot(location).unwrap().styled_name(),
+                "'s ability: ",
+                ability.description(),
+                WATER_COST: ability.cost(game_view),
+            ),
+            Action::UseCampAbility(ability, column_index) => make_spans!(
+                "Use ",
+                game_view.my_state().column(column_index).camp.styled_name(),
+                "'s ability: ",
+                ability.description(),
+                WATER_COST: ability.cost(game_view),
+            ),
+            Action::EndTurn => make_spans!(
+                "End turn, taking ",
+                Span::styled("Water Silo", *WATER),
+                " if possible",
+            ),
         }
     }
 }
@@ -891,7 +900,7 @@ impl PersonOrEventType<'_> {
 
 impl StyledName for PersonOrEventType<'_> {
     /// Returns this card's name, styled for display.
-    fn styled_name(&self) -> StyledString {
+    fn styled_name(&self) -> Span<'static> {
         match self {
             PersonOrEventType::Person(person_type) => person_type.styled_name(),
             PersonOrEventType::Event(event_type) => event_type.styled_name(),
@@ -945,7 +954,7 @@ impl PartialOrd for PersonOrEventType<'_> {
 }
 
 /// Trait for a type of event card.
-pub trait EventType: fmt::Debug {
+pub trait EventType: fmt::Debug + Sync {
     /// Returns the event's name.
     fn name(&self) -> &'static str;
 
@@ -976,8 +985,8 @@ pub trait EventType: fmt::Debug {
 
 impl<T: EventType + ?Sized> StyledName for T {
     /// Returns this event's name, styled for display.
-    fn styled_name(&self) -> StyledString {
-        StyledString::new(self.name(), EVENT)
+    fn styled_name(&self) -> Span<'static> {
+        Span::styled(self.name(), *EVENT)
     }
 }
 

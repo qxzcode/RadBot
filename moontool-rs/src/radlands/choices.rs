@@ -1,15 +1,18 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use itertools::Itertools;
+use tui::text::Spans;
+
+use crate::make_spans;
 
 use super::locations::*;
 use super::player_state::Person;
 use super::styles::StyledName;
-use super::GameView;
 use super::{Action, GameResult, GameState, IconEffect};
 
 /// A choice between several options that must be made by a player, along with the logic for
 /// advancing the game state based on the choice.
+#[derive(Clone)]
 #[must_use]
 pub enum Choice<'ctype> {
     Action(ActionChoice<'ctype>),
@@ -114,23 +117,29 @@ impl<'v, 'g: 'v, 'ctype: 'g> Choice<'ctype> {
     /// Formats the option with the given index for human-readable display.
     ///
     /// Panics if the index is is greater than equal to the number of options for this choice.
-    pub fn format_option(&self, option: usize, game_view: &'v GameView<'g, 'ctype>) -> String {
+    pub fn format_option(
+        &self,
+        option: usize,
+        game_state: &'g mut GameState<'ctype>,
+    ) -> Spans<'ctype> {
         match self {
-            Choice::Action(action_choice) => action_choice.actions()[option].format(game_view),
-            Choice::PlayLoc(play_choice) => format!(
-                "Play {} at {:?}",
+            Choice::Action(action_choice) => {
+                action_choice.actions()[option].format(&game_state.view_for_cur())
+            }
+            Choice::PlayLoc(play_choice) => make_spans!(
+                "Play ",
                 play_choice.person().styled_name(),
-                play_choice.locations()[option],
+                format!(" at {:?}", play_choice.locations()[option]),
             ),
-            Choice::Damage(damage_choice) => format!(
+            Choice::Damage(damage_choice) => Spans::from(format!(
                 "{} {:?}",
                 if damage_choice.destroy() { "Destroy" } else { "Damage" },
                 damage_choice.locations()[option],
-            ),
+            )),
             Choice::Restore(restore_choice) => {
-                format!("Restore {:?}", restore_choice.locations()[option])
+                Spans::from(format!("Restore {:?}", restore_choice.locations()[option]))
             }
-            Choice::IconEffect(icon_effect_choice) => {
+            Choice::IconEffect(icon_effect_choice) => Spans::from({
                 if option == 0 {
                     "Don't use an icon effect".to_string()
                 } else {
@@ -139,28 +148,33 @@ impl<'v, 'g: 'v, 'ctype: 'g> Choice<'ctype> {
                         icon_effect_choice.icon_effects()[option - 1],
                     )
                 }
-            }
+            }),
             Choice::RescuePerson(rescue_person_choice) => {
-                let (location, person) = game_view
-                    .game_state
+                let (location, person) = game_state
                     .player(rescue_person_choice.chooser())
                     .nth_person(option);
-                format!("Rescue {} at {:?}", person.styled_name(), location)
+                make_spans!(
+                    "Rescue ",
+                    person.styled_name(),
+                    format!(" at {:?}", location),
+                )
             }
-            Choice::MoveEvents(_move_events_choice) => match option {
-                0 => "Don't move events back".to_string(),
-                1 => "Move events back".to_string(),
+            Choice::MoveEvents(_move_events_choice) => Spans::from(match option {
+                0 => "Don't move events back",
+                1 => "Move events back",
                 _ => panic!("Invalid option for Choice::MoveEvents"),
-            },
-            Choice::DamageColumn(damage_column_choice) => {
-                format!("Damage column {:?}", damage_column_choice.columns()[option])
-            }
+            }),
+            Choice::DamageColumn(damage_column_choice) => Spans::from(format!(
+                "Damage column {:?}",
+                damage_column_choice.columns()[option]
+            )),
         }
     }
 }
 
-type ThenCallback<'ctype, T> =
-    Rc<dyn Fn(&mut GameState<'ctype>, T) -> Result<Choice<'ctype>, GameResult> + 'ctype>;
+type ThenCallback<'ctype, T> = Arc<
+    dyn Fn(&mut GameState<'ctype>, T) -> Result<Choice<'ctype>, GameResult> + Sync + Send + 'ctype,
+>;
 
 /// A future that may need to wait for a player to make a choice.
 /// Can be converted into a full `Choice` by attaching a callback with `.then(...)`.
@@ -175,20 +189,23 @@ impl<'g, 'ctype: 'g, T: 'ctype> ChoiceFuture<'g, 'ctype, T> {
     /// this future resolves.
     pub fn then(
         self,
-        callback: impl Fn(&mut GameState<'ctype>, T) -> Result<Choice<'ctype>, GameResult> + 'ctype,
+        callback: impl Fn(&mut GameState<'ctype>, T) -> Result<Choice<'ctype>, GameResult>
+            + Sync
+            + Send
+            + 'ctype,
     ) -> Result<Choice<'ctype>, GameResult> {
-        (self.choice_builder)(Rc::new(callback))
+        (self.choice_builder)(Arc::new(callback))
     }
 
     /// Returns a new future that encapsulates the given logic for advancing the game state after
     /// this future resolves, but still needs more logic added to determine the next choice.
     pub fn then_future<U: 'ctype>(
         self,
-        callback: impl Fn(&mut GameState<'ctype>, T) -> Result<U, GameResult> + 'ctype,
+        callback: impl Fn(&mut GameState<'ctype>, T) -> Result<U, GameResult> + Sync + Send + 'ctype,
     ) -> ChoiceFuture<'g, 'ctype, U> {
         ChoiceFuture {
             choice_builder: Box::new(move |callback2| {
-                (self.choice_builder)(Rc::new(move |game_state, value| {
+                (self.choice_builder)(Arc::new(move |game_state, value| {
                     let value2 = callback(game_state, value)?;
                     callback2(game_state, value2)
                 }))
@@ -204,11 +221,13 @@ impl<'g, 'ctype: 'g, T: 'ctype> ChoiceFuture<'g, 'ctype, T> {
                 &'g2 mut GameState<'ctype>,
                 T,
             ) -> Result<ChoiceFuture<'g2, 'ctype, U>, GameResult>
+            + Sync
+            + Send
             + 'ctype,
     ) -> ChoiceFuture<'g, 'ctype, U> {
         ChoiceFuture {
             choice_builder: Box::new(move |callback2| {
-                (self.choice_builder)(Rc::new(move |game_state, value| {
+                (self.choice_builder)(Arc::new(move |game_state, value| {
                     let future2 = callback(game_state, value)?;
                     (future2.choice_builder)(callback2.clone())
                 }))
@@ -220,7 +239,7 @@ impl<'g, 'ctype: 'g, T: 'ctype> ChoiceFuture<'g, 'ctype, T> {
     pub fn ignore_result(self) -> ChoiceFuture<'g, 'ctype> {
         ChoiceFuture {
             choice_builder: Box::new(move |callback| {
-                (self.choice_builder)(Rc::new(move |game_state, _| callback(game_state, ())))
+                (self.choice_builder)(Arc::new(move |game_state, _| callback(game_state, ())))
             }),
         }
     }
@@ -242,6 +261,7 @@ impl<'g, 'ctype: 'g> ChoiceFuture<'g, 'ctype> {
     }
 }
 
+#[derive(Clone)]
 pub struct ActionChoice<'ctype> {
     actions: Vec<Action<'ctype>>,
 }
@@ -274,6 +294,7 @@ macro_rules! choice_struct {
         pub fn choose(&$self:ident, $game_state:ident, $action:ident: $action_type:ty $(,)?)
             $perform_action:block
     } => {
+        #[derive(Clone)]
         pub struct $StructName<'ctype> {
             /// The player who must choose.
             chooser: Player,
@@ -281,7 +302,7 @@ macro_rules! choice_struct {
             $($(#[$field_meta])* $field: $($field_type)+,)*
 
             /// A callback for what to do after the player chooses and the game state is updated.
-            then: Rc<dyn Fn(&mut GameState<'ctype>, $result_type) -> Result<Choice<'ctype>, GameResult> + 'ctype>,
+            then: Arc<dyn Fn(&mut GameState<'ctype>, $result_type) -> Result<Choice<'ctype>, GameResult> + Sync + Send + 'ctype>,
         }
 
         impl<'g, 'ctype: 'g> $StructName<'ctype> {

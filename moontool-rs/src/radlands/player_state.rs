@@ -710,18 +710,11 @@ impl Camp<'_> {
 
 impl StyledName for Camp<'_> {
     /// Returns this camps's name, styled for display.
-    fn styled_name(&self) -> StyledString {
-        if let CampStatus::Destroyed = self.status {
-            StyledString::new("<destroyed>", CAMP_DESTROYED)
-        } else {
-            StyledString::new(
-                self.camp_type.name,
-                match self.status {
-                    CampStatus::Undamaged => CAMP,
-                    CampStatus::Damaged => CAMP_DAMAGED,
-                    CampStatus::Destroyed => unreachable!(),
-                },
-            )
+    fn styled_name(&self) -> Span<'static> {
+        match self.status {
+            CampStatus::Undamaged => Span::styled(self.camp_type.name, *CAMP),
+            CampStatus::Damaged => Span::styled(self.camp_type.name, *CAMP_DAMAGED),
+            CampStatus::Destroyed => Span::styled("<destroyed>", *CAMP_DESTROYED),
         }
     }
 }
@@ -852,18 +845,18 @@ impl<'ctype> Person<'ctype> {
 
 impl StyledName for Person<'_> {
     /// Returns the name of the person, styled for display.
-    fn styled_name(&self) -> StyledString {
+    fn styled_name(&self) -> Span<'static> {
         match self {
-            Person::Punk { .. } => StyledString::new("Punk", PUNK),
+            Person::Punk { .. } => Span::styled("Punk", *PUNK),
             Person::NonPunk {
                 person_type,
                 status,
-            } => StyledString::new(
+            } => Span::styled(
                 person_type.name,
                 match status {
-                    NonPunkStatus::Ready => PERSON_READY,
-                    NonPunkStatus::NotReady => PERSON_NOT_READY,
-                    NonPunkStatus::Injured => PERSON_INJURED,
+                    NonPunkStatus::Ready => *PERSON_READY,
+                    NonPunkStatus::NotReady => *PERSON_NOT_READY,
+                    NonPunkStatus::Injured => *PERSON_INJURED,
                 },
             ),
         }
@@ -872,10 +865,10 @@ impl StyledName for Person<'_> {
 
 impl StyledName for Option<Person<'_>> {
     /// Returns the name of the person slot, styled for display.
-    fn styled_name(&self) -> StyledString {
+    fn styled_name(&self) -> Span<'static> {
         match self {
             Some(person) => person.styled_name(),
-            None => StyledString::new("<none>", EMPTY),
+            None => Span::styled("<none>", *EMPTY),
         }
     }
 }

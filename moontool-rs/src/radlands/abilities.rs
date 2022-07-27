@@ -3,7 +3,7 @@ use super::locations::CardLocation;
 use super::{GameResult, GameView, IconEffect};
 
 /// An ability on a camp or person.
-pub trait Ability {
+pub trait Ability: Sync {
     /// Returns a description of this ability for display.
     fn description(&self) -> String;
 

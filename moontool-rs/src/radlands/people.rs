@@ -4,6 +4,7 @@ use std::hash::{Hash, Hasher};
 
 use by_address::ByAddress;
 use itertools::Itertools;
+use tui::text::Span;
 
 use super::abilities::*;
 use super::choices::*;
@@ -80,8 +81,8 @@ impl fmt::Debug for PersonType {
 
 impl StyledName for PersonType {
     /// Returns this person's name, styled for display.
-    fn styled_name(&self) -> StyledString {
-        StyledString::new(self.name, PERSON_READY)
+    fn styled_name(&self) -> Span<'static> {
+        Span::styled(self.name, *PERSON_READY)
     }
 }
 
