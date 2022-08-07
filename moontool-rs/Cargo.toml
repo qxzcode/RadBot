@@ -1,17 +1,17 @@
 [package]
 name = "radbot"
-version = "0.1.0"
+version = "0.2.0"
 authors = ["Quinn Tucker"]
 edition = "2021"
 
 [dependencies]
-rand = "0.8.4"
-by_address = "1.0.4"
+rand = "0.8"
+by_address = "1.0"
 num-integer = "0.1"
 itertools = "0.10"
-crossterm = "0.23"
-ordered-float = "2.10"
-clap = { version = "3.1", features = ["derive"] }
+crossterm = "0.24"
+ordered-float = "3.0"
+clap = { version = "3.2", features = ["derive"] }
 tui = "0.18"
 lazy_static = "1.4"
 unicode-width = "0.1"

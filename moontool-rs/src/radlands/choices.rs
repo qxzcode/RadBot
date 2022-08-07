@@ -19,9 +19,9 @@ pub enum Choice<'ctype> {
     PlayLoc(PlayChoice<'ctype>),
     Damage(DamageChoice<'ctype>),
     Restore(RestoreChoice<'ctype>),
-    IconEffect(IconEffectChoice<'ctype>), // only used for Scientist's ability
+    IconEffect(IconEffectChoice<'ctype>),
     RescuePerson(RescuePersonChoice<'ctype>), // only used for Rescue Team's ability
-    MoveEvents(MoveEventsChoice<'ctype>), // only used for Doomsayer's on-enter-play effect
+    MoveEvents(MoveEventsChoice<'ctype>),     // only used for Doomsayer's on-enter-play effect
     DamageColumn(DamageColumnChoice<'ctype>), // only used for Magnus Karv's ability
 }
 

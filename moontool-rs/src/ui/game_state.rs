@@ -10,14 +10,20 @@ use tui::{
 
 use crate::{
     make_spans,
-    radlands::{locations::Player, people::get_person_types, styles::*, Action, GameState},
+    radlands::{
+        choices::Choice,
+        locations::{CardRowIndex, ColumnIndex, Player},
+        people::get_person_types,
+        styles::*,
+        Action, GameState,
+    },
     ui::layout::Layout,
 };
 
 pub struct GameStateWidget<'a, 'ctype, 'str> {
     pub block: Block<'str>,
     pub game_state: &'a GameState<'ctype>,
-    pub actions: &'a [Action<'ctype>],
+    pub choice: Option<&'a Choice<'ctype>>,
 }
 
 impl GameStateWidget<'_, '_, '_> {
@@ -147,24 +153,64 @@ impl GameStateWidget<'_, '_, '_> {
             .map(|column| column.iter().map(|s| s.width()).max().unwrap() + 4)
             .collect_vec();
 
-        // tag people that have ability actions
-        if player == self.game_state.cur_player {
-            for (i, action) in self.actions.iter().enumerate().rev() {
-                let tag = Span::from(format!("({}) ", i + 1));
-                match action {
-                    Action::UsePersonAbility(_ability, loc) => {
-                        let cell =
-                            &mut table_columns[loc.column().as_usize()][1 - loc.row().as_usize()];
-                        cell.0.insert(0, tag);
+        // tag board items with associated option numbers based on the type of Choice
+        let mut tag_location = |row: CardRowIndex, col: ColumnIndex, i: usize| {
+            let tag = Span::from(format!("({}) ", i + 1));
+            let cell = &mut table_columns[col.as_usize()][2 - row.as_usize()];
+            cell.0.insert(0, tag);
+        };
+        match self.choice {
+            Some(Choice::Action(choice)) if player == self.game_state.cur_player => {
+                for (i, action) in choice.actions().iter().enumerate().rev() {
+                    match action {
+                        Action::UsePersonAbility(_ability, loc) => {
+                            tag_location(loc.row().into(), loc.column(), i);
+                        }
+                        Action::UseCampAbility(_ability, col_index) => {
+                            tag_location(CardRowIndex::camp(), *col_index, i);
+                        }
+                        _ => {}
                     }
-                    Action::UseCampAbility(_ability, col_index) => {
-                        let col_index = col_index.as_usize();
-                        let cell = &mut table_columns[col_index][2];
-                        cell.0.insert(0, tag);
-                    }
-                    _ => {}
                 }
             }
+            Some(Choice::PlayLoc(choice)) if player == choice.chooser() => {
+                for (i, loc) in choice.locations().iter().enumerate().rev() {
+                    // TODO: shift and make gaps
+                    tag_location(loc.row().into(), loc.column(), i);
+                }
+            }
+            Some(Choice::Damage(choice)) => {
+                for (i, loc) in choice.locations().iter().enumerate().rev() {
+                    if player == loc.player() {
+                        tag_location(loc.row(), loc.column(), i);
+                    }
+                }
+            }
+            Some(Choice::Restore(choice)) if player == choice.chooser() => {
+                for (i, loc) in choice.locations().iter().enumerate().rev() {
+                    tag_location(loc.row(), loc.column(), i);
+                }
+            }
+            Some(Choice::RescuePerson(choice)) if player == choice.chooser() => {
+                let locations = self.game_state.player(choice.chooser()).person_locs();
+                for (i, loc) in locations.collect_vec().into_iter().enumerate().rev() {
+                    tag_location(loc.row().into(), loc.column(), i);
+                }
+            }
+            Some(Choice::DamageColumn(choice)) if player == choice.chooser().other() => {
+                for (i, col) in choice.columns().iter().enumerate().rev() {
+                    tag_location(CardRowIndex::camp(), *col, i);
+                    for (row, _) in self
+                        .game_state
+                        .player(player)
+                        .column(*col)
+                        .enumerate_people()
+                    {
+                        tag_location(row.into(), *col, i);
+                    }
+                }
+            }
+            _ => {}
         }
 
         // center the cells in their columns

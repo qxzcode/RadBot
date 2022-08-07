@@ -251,7 +251,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
     /// column indices.
     pub fn enumerate_columns(
         &self,
-    ) -> impl Iterator<Item = (ColumnIndex, &CardColumn<'ctype>)> + '_ {
+    ) -> impl DoubleEndedIterator<Item = (ColumnIndex, &CardColumn<'ctype>)> + '_ {
         self.columns
             .iter()
             .enumerate()
@@ -262,7 +262,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
     /// and non-destroyed) with strongly-typed locations.
     pub fn enumerate_camps(
         &self,
-    ) -> impl Iterator<Item = (PlayerCardLocation, &Camp<'ctype>)> + '_ {
+    ) -> impl DoubleEndedIterator<Item = (PlayerCardLocation, &Camp<'ctype>)> + '_ {
         self.enumerate_columns().map(|(col_index, col)| {
             (
                 PlayerCardLocation::new(col_index, CardRowIndex::camp()),
@@ -273,7 +273,9 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
 
     /// Returns an iterator that enumerates the people of this player's board with strongly-typed
     /// locations.
-    pub fn enumerate_people(&self) -> impl Iterator<Item = (PlayLocation, &Person<'ctype>)> + '_ {
+    pub fn enumerate_people(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = (PlayLocation, &Person<'ctype>)> + '_ {
         self.enumerate_columns().flat_map(|(col_index, col)| {
             col.enumerate_people()
                 .map(move |(row_index, person)| (PlayLocation::new(col_index, row_index), person))
@@ -563,7 +565,9 @@ impl<'ctype> CardColumn<'ctype> {
     }
 
     /// Returns an iterator that enumerates the people in the column.
-    pub fn enumerate_people(&self) -> impl Iterator<Item = (PersonRowIndex, &Person<'ctype>)> {
+    pub fn enumerate_people(
+        &self,
+    ) -> impl DoubleEndedIterator<Item = (PersonRowIndex, &Person<'ctype>)> {
         self.person_slots
             .iter()
             .enumerate()

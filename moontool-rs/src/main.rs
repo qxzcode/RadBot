@@ -79,20 +79,20 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType], args: &Args) {
     let mut p1: Box<dyn PlayerController>;
     let mut p2: Box<dyn PlayerController>;
     if args.random {
-        p1 = Box::new(RandomController { quiet: true });
-        p2 = Box::new(RandomController { quiet: true });
+        p1 = Box::new(RandomController);
+        p2 = Box::new(RandomController);
     } else if args.humans {
-        p1 = Box::new(HumanController { label: "Human 1" });
-        p2 = Box::new(HumanController { label: "Human 2" });
+        p1 = Box::new(HumanController);
+        p2 = Box::new(HumanController);
     } else {
         let ai_time_limit = Duration::from_secs_f64(args.ai_time_limit);
         println!("AI time limit: {:?}", ai_time_limit);
         p1 = Box::new(MonteCarloController::<_, false> {
             player: Player::Player1,
             choice_time_limit: ai_time_limit,
-            make_rollout_controller: |_| RandomController { quiet: true },
+            make_rollout_controller: |_| RandomController,
         });
-        p2 = Box::new(HumanController { label: "Human" });
+        p2 = Box::new(HumanController);
     }
 
     let (mut game_state, choice) = GameState::new(camp_types, person_types);

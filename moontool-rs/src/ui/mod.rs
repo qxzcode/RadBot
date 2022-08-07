@@ -5,10 +5,7 @@ mod layout;
 use std::{
     collections::VecDeque,
     io, mem, panic,
-    sync::{
-        mpsc::{self, SyncSender},
-        Arc, Mutex,
-    },
+    sync::{mpsc, Arc, Mutex},
     thread,
     time::Instant,
 };
@@ -23,10 +20,11 @@ use itertools::Itertools;
 use lazy_static::lazy_static;
 use tui::{
     backend::{Backend, CrosstermBackend},
-    layout::{Alignment, Constraint, Corner, Direction},
+    buffer::Buffer,
+    layout::{Alignment, Constraint, Corner, Direction, Rect},
     style::{Color, Style},
     text::{Span, Spans},
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, List, ListItem, Paragraph, Widget},
     Frame, Terminal,
 };
 use unicode_width::UnicodeWidthStr;
@@ -34,6 +32,7 @@ use unicode_width::UnicodeWidthStr;
 use crate::radlands::{
     camps::{get_camp_types, CampType},
     choices::Choice,
+    controllers::ControllerStats,
     locations::Player,
     people::{get_person_types, PersonType},
     GameResult, GameState,
@@ -71,15 +70,30 @@ fn spawn_monitored_thread<T: Send + 'static>(
 }
 
 lazy_static! {
-    static ref USER_INPUT_REQUESTS: Arc<Mutex<VecDeque<SyncSender<String>>>> =
-        Arc::new(Mutex::new(VecDeque::new()));
+    static ref USER_INPUT_REQUESTS: Mutex<VecDeque<mpsc::Sender<String>>> =
+        Mutex::new(VecDeque::new());
 }
 
 // Gets a String of user input from the UI thread. Blocks until the user submits.
 pub fn get_user_input() -> String {
-    let (tx, rx) = mpsc::sync_channel(1);
+    let (tx, rx) = mpsc::channel();
     USER_INPUT_REQUESTS.lock().unwrap().push_back(tx);
     rx.recv().expect("Failed to recv() user input")
+}
+
+lazy_static! {
+    static ref STATS_TX: Mutex<Option<mpsc::Sender<RedrawEvent>>> = Mutex::new(None);
+}
+
+// Sets the contents of the stats display for the given player.
+pub fn set_controller_stats(stats: Box<dyn ControllerStats + Send>, player: Player) {
+    STATS_TX
+        .lock()
+        .unwrap()
+        .as_ref()
+        .expect("STATS_TX is not initialized")
+        .send(RedrawEvent::StatsUpdate(stats, player))
+        .expect("Failed to send StatsUpdate");
 }
 
 struct HistoryEntry<'ctype> {
@@ -106,6 +120,7 @@ enum InputMode {
 enum RedrawEvent {
     Input(Event),
     GameUpdate(GameState<'static>, Result<Choice<'static>, GameResult>),
+    StatsUpdate(Box<dyn ControllerStats + Send>, Player),
     Abort,
 }
 
@@ -116,6 +131,9 @@ struct AppState {
     input: String,
     /// Current input mode
     input_mode: InputMode,
+
+    p1_stats: Option<Box<dyn ControllerStats>>,
+    p2_stats: Option<Box<dyn ControllerStats>>,
 
     game_history: Arc<Mutex<Vec<HistoryEntry<'static>>>>,
     log_messages: Vec<String>,
@@ -129,6 +147,7 @@ impl AppState {
     fn run(&mut self) -> io::Result<()> {
         // create a channel for sending events to the UI to trigger redraws
         let (event_tx, event_rx) = mpsc::channel();
+        *STATS_TX.lock().unwrap() = Some(event_tx.clone());
 
         // setup terminal
         enable_raw_mode()?;
@@ -202,6 +221,10 @@ impl AppState {
                         self.cur_state = new_state;
                         self.cur_choice = new_choice;
                     }
+                    RedrawEvent::StatsUpdate(stats, player) => match player {
+                        Player::Player1 => self.p1_stats = Some(stats),
+                        Player::Player2 => self.p2_stats = Some(stats),
+                    },
                     RedrawEvent::Abort => break 'main_loop,
                 }
 
@@ -285,12 +308,9 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut AppState) {
         .unwrap();
     let game_state_height = max_player_height * 2 + 1;
 
-    let [game_state_rect, stats_rect] = Layout::default()
+    let [log_rect, stats_rect] = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Length(game_state_height.try_into().unwrap()),
-            Constraint::Min(5),
-        ])
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(right_rect);
 
     // render the log pane
@@ -333,10 +353,10 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut AppState) {
     let desired_options_height: u16 = (options.len() + 1).try_into().unwrap();
     app.options_height = app.options_height.max(desired_options_height);
 
-    let [log_rect, options_rect, input_rect] = Layout::default()
+    let [game_state_rect, options_rect, input_rect] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Min(1),
+            Constraint::Min(game_state_height.try_into().unwrap()),
             Constraint::Length(app.options_height),
             Constraint::Length(3),
         ])
@@ -396,11 +416,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut AppState) {
         GameStateWidget {
             block,
             game_state: &app.cur_state,
-            actions: if let Ok(Choice::Action(choice)) = &app.cur_choice {
-                choice.actions()
-            } else {
-                &[]
-            },
+            choice: app.cur_choice.as_ref().ok(),
         },
         game_state_rect,
     );
@@ -410,7 +426,24 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut AppState) {
         .title(" Stats ")
         .title_alignment(Alignment::Center)
         .borders(Borders::ALL);
+    let inner_area = block.inner(stats_rect);
     f.render_widget(block, stats_rect);
+    let p1_stats = app.p1_stats.as_mut();
+    let p2_stats = app.p2_stats.as_mut();
+    let stats_widget = match app.cur_state.cur_player {
+        Player::Player1 => p1_stats.or(p2_stats),
+        Player::Player2 => p2_stats.or(p1_stats),
+    };
+    if let Some(stats_widget) = stats_widget {
+        f.render_widget(StatsWidget(stats_widget.as_mut()), inner_area);
+    }
+}
+
+struct StatsWidget<'a>(&'a mut dyn ControllerStats);
+impl Widget for StatsWidget<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        self.0.render(area, buf);
+    }
 }
 
 pub(crate) fn main() -> io::Result<()> {
@@ -424,6 +457,8 @@ pub(crate) fn main() -> io::Result<()> {
         frame_num: 0,
         input: String::new(),
         input_mode: InputMode::Normal,
+        p1_stats: None,
+        p2_stats: None,
         game_history: Arc::new(Mutex::new(Vec::new())),
         log_messages: Vec::new(),
         options_height: 0,

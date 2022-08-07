@@ -24,13 +24,13 @@ pub(super) fn game_thread_main(
     let mut game_state = initial_state;
     let mut cur_choice = initial_choice;
 
-    let p1 = &mut RandomController { quiet: true };
+    let p1 = &mut RandomController;
     // let p1 =
     //     &mut MCTSController::<_, true>::new(Player::Player2, Duration::from_secs_f64(3.0), |_| {
-    //         RandomController { quiet: true }
+    //         RandomController
     //     });
-    let p2 = &mut HumanController { label: "Human" };
-    // let p2 = &mut RandomController { quiet: true };
+    let p2 = &mut HumanController;
+    // let p2 = &mut RandomController;
 
     while let Ok(choice) = &cur_choice {
         // save the game state and choice for the history entry
