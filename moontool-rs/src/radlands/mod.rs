@@ -93,7 +93,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
         // have the current player draw a card for the start of their turn
         game_state
-            .view_for_cur()
+            .view_for_cur_mut()
             .draw_card_into_hand()
             .expect("The first draw of the game should always succeed");
 
@@ -117,22 +117,35 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
     }
 
     /// Returns a view of this game state from the perspective of the given player.
-    pub fn view_for(&'g mut self, which: Player) -> GameView<'g, 'ctype> {
+    pub fn view_for(&'g self, which: Player) -> GameView<'g, 'ctype> {
         GameView {
             game_state: self,
             player: which,
         }
     }
 
+    /// Returns a view of this game state from the perspective of the given player.
+    pub fn view_for_mut(&'g mut self, which: Player) -> GameViewMut<'g, 'ctype> {
+        GameViewMut {
+            game_state: self,
+            player: which,
+        }
+    }
+
     /// Returns a view of this game state from the perspective of the current player.
-    pub fn view_for_cur(&'g mut self) -> GameView<'g, 'ctype> {
+    pub fn view_for_cur(&'g self) -> GameView<'g, 'ctype> {
         self.view_for(self.cur_player)
+    }
+
+    /// Returns a view of this game state from the perspective of the current player.
+    pub fn view_for_cur_mut(&'g mut self) -> GameViewMut<'g, 'ctype> {
+        self.view_for_mut(self.cur_player)
     }
 
     /// Resolves the current player's first event (if any), then advances any other events.
     /// Returns a future that may represent choices from the event resolution.
     fn advance_cur_events(&'g mut self) -> ChoiceFuture<'g, 'ctype> {
-        let mut view = self.view_for_cur();
+        let mut view = self.view_for_cur_mut();
 
         // take the first event (if any)
         let first_event = view.my_state_mut().events[0].take();
@@ -150,7 +163,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
             }
 
             // resolve the event
-            event.resolve(&mut self.view_for_cur())
+            event.resolve(&mut self.view_for_cur_mut())
         } else {
             ChoiceFuture::immediate(self)
         }
@@ -172,7 +185,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
         // resolve/advance events
         self.advance_cur_events().then(move |game_state, _| {
-            let mut view = game_state.view_for_cur();
+            let mut view = game_state.view_for_cur_mut();
 
             // replenish water
             view.game_state.cur_player_water = 3;
@@ -355,7 +368,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                     if i == 0 {
                         // it's the first event, so remove and resolve it
                         my_state.events[0] = None;
-                        return raiders.resolve(&mut self.view_for(player));
+                        return raiders.resolve(&mut self.view_for_mut(player));
                     } else {
                         // it's not the first event, so advance it if possible
                         let events = &mut my_state.events;
@@ -370,64 +383,22 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
         // if we get here, the raiders event was not found in the event queue;
         // add it to the queue
-        self.view_for(player).play_event(&RaidersEvent)
-    }
-
-    /// Returns an object for formatting the game state with numbered tags for actions.
-    pub fn action_formatter(&'g self, actions: &'g [Action<'ctype>]) -> GameFormatter<'g, 'ctype> {
-        GameFormatter {
-            game: self,
-            actions,
-        }
-    }
-}
-
-impl fmt::Display for GameState<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "{}", self.action_formatter(&[]))
-    }
-}
-
-/// A helper struct for displaying the game state with numbered tags for actions.
-pub struct GameFormatter<'g, 'ctype> {
-    game: &'g GameState<'ctype>,
-    actions: &'g [Action<'ctype>],
-}
-
-impl fmt::Display for GameFormatter<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let write_player_state = |f: &mut fmt::Formatter, player: Player| {
-            let n = player.number();
-            if player == self.game.cur_player {
-                // current player
-                writeln!(
-                    f,
-                    "{BOLD}Player {n} ({WATER}{} water{RESET_FG}){RESET}",
-                    self.game.cur_player_water
-                )?;
-            } else {
-                // other player
-                writeln!(f, "Player {n}")?;
-            }
-
-            let is_cur_player = player == self.game.cur_player;
-            let actions = if is_cur_player { self.actions } else { &[] };
-            self.game.player(player).fmt(f, is_cur_player, actions)
-        };
-        write_player_state(f, Player::Player1)?;
-        writeln!(f)?;
-        write_player_state(f, Player::Player2)?;
-        writeln!(
-            f,
-            "\n{} cards in deck, {} in discard",
-            self.game.deck.len(),
-            self.game.discard.len()
-        )
+        self.view_for_mut(player).play_event(&RaidersEvent)
     }
 }
 
 /// A view of a game from one player's perspective.
+#[derive(Clone, Copy)]
 pub struct GameView<'g, 'ctype: 'g> {
+    /// The game state.
+    game_state: &'g GameState<'ctype>,
+
+    /// The identity of the player whose view this is for.
+    player: Player,
+}
+
+/// A view of a game from one player's perspective.
+pub struct GameViewMut<'g, 'ctype: 'g> {
     /// The game state.
     game_state: &'g mut GameState<'ctype>,
 
@@ -435,17 +406,149 @@ pub struct GameView<'g, 'ctype: 'g> {
     player: Player,
 }
 
-impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
-    pub fn my_state(&self) -> &PlayerState<'ctype> {
-        self.game_state.player(self.player)
+impl<'v, 'g: 'v, 'ctype: 'g> From<GameViewMut<'g, 'ctype>> for GameView<'g, 'ctype> {
+    fn from(game_view_mut: GameViewMut<'g, 'ctype>) -> Self {
+        Self {
+            game_state: game_view_mut.game_state,
+            player: game_view_mut.player,
+        }
+    }
+}
+
+/// Helper macro to implement functions common to both GameView and GameViewMut.
+macro_rules! impl_game_view_common {
+    ($ViewType:ident) => {
+        impl<'v, 'g: 'v, 'ctype: 'g> $ViewType<'g, 'ctype> {
+            pub fn my_state(&self) -> &PlayerState<'ctype> {
+                self.game_state.player(self.player)
+            }
+
+            pub fn other_state(&self) -> &PlayerState<'ctype> {
+                self.game_state.player(self.player.other())
+            }
+
+            /// Has this player damage an unprotected opponent card.
+            /// Returns the location of the card that was damaged.
+            pub fn damage_enemy(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
+                // get all possible targets
+                let target_locs = self
+                    .other_state()
+                    .unprotected_card_locs()
+                    .map(|loc| loc.for_player(self.player.other()))
+                    .collect_vec();
+
+                // ask the player to damage one of them
+                self.choose_and_damage_card(target_locs)
+            }
+
+            /// Has this player damage any opponent card.
+            pub fn damage_any_enemy(&'v self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
+                // get all possible targets
+                let target_locs = self
+                    .other_state()
+                    .card_locs()
+                    .map(|loc| loc.for_player(self.player.other()))
+                    .collect_vec();
+
+                // ask the player to damage one of them
+                self.choose_and_damage_card(target_locs)
+            }
+
+            /// Has this player damage an unprotected opponent camp.
+            pub fn damage_unprotected_camp(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
+                // get all possible targets
+                let target_locs = self
+                    .other_state()
+                    .unprotected_card_locs()
+                    .filter(|loc| loc.row().is_camp())
+                    .map(|loc| loc.for_player(self.player.other()))
+                    .collect_vec();
+
+                // ask the player to damage one of them
+                self.choose_and_damage_card(target_locs)
+            }
+
+            /// Has this player injure an unprotected opponent person.
+            /// Assumes that the opponent has at least one person.
+            pub fn injure_enemy(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
+                self.choose_and_damage_card(self.unprotected_enemies_vec())
+            }
+
+            /// Has this player destroy an unprotected opponent person.
+            /// Assumes that the opponent has at least one person.
+            pub fn destroy_enemy(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
+                self.choose_and_destroy_card(self.unprotected_enemies_vec())
+            }
+
+            /// Returns a Vec of the locations of all unprotected opponent people.
+            fn unprotected_enemies_vec(&self) -> Vec<CardLocation> {
+                self.other_state()
+                    .unprotected_person_locs()
+                    .map(|loc| loc.for_player(self.player.other()))
+                    .collect()
+            }
+
+            /// Has this player choose and then damage a card from a given list of locations.
+            /// Returns the location of the card that was damaged.
+            pub fn choose_and_damage_card(
+                &'v self,
+                locs: Vec<CardLocation>,
+            ) -> ChoiceFuture<'g, 'ctype, CardLocation> {
+                DamageChoice::future(self.player, false, locs)
+            }
+
+            /// Has this player destroy one of their own people.
+            /// Assumes that the player has at least one person.
+            pub fn destroy_own_person(&'v self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
+                // get all possible targets
+                let target_locs = self
+                    .my_state()
+                    .person_locs()
+                    .map(|loc| loc.for_player(self.player))
+                    .collect_vec();
+
+                // ask the player to destroy one of them
+                self.choose_and_destroy_card(target_locs)
+            }
+
+            /// Has this player destroy an opponent camp.
+            pub fn destroy_enemy_camp(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
+                // get all possible targets (non-destroyed camps)
+                let target_locs = self
+                    .other_state()
+                    .enumerate_camps()
+                    .filter(|(_, camp)| !camp.is_destroyed())
+                    .map(|(loc, _)| loc.for_player(self.player.other()))
+                    .collect_vec();
+
+                // ask the player to destroy one of them
+                self.choose_and_destroy_card(target_locs)
+            }
+
+            /// Has this player choose and then destroy a card from a given list of locations.
+            pub fn choose_and_destroy_card(
+                &'v self,
+                locs: Vec<CardLocation>,
+            ) -> ChoiceFuture<'g, 'ctype, CardLocation> {
+                DamageChoice::future(self.player, true, locs)
+            }
+        }
+    };
+}
+
+impl_game_view_common!(GameView);
+impl_game_view_common!(GameViewMut);
+
+impl<'v, 'g: 'v, 'ctype: 'g> GameViewMut<'g, 'ctype> {
+    pub fn as_non_mut(&'v self) -> GameView<'v, 'ctype> {
+        GameView {
+            game_state: self.game_state,
+            player: self.player,
+        }
     }
 
     pub fn my_state_mut(&mut self) -> &mut PlayerState<'ctype> {
         self.game_state.player_mut(self.player)
-    }
-
-    pub fn other_state(&self) -> &PlayerState<'ctype> {
-        self.game_state.player(self.player.other())
     }
 
     pub fn other_view_mut(&'v mut self) -> GameView<'v, 'ctype> {
@@ -460,72 +563,11 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
         ChoiceFuture::immediate(game_state)
     }
 
-    /// Has this player damage an unprotected opponent card.
-    /// Returns the location of the card that was damaged.
-    pub fn damage_enemy(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
-        // get all possible targets
-        let target_locs = self
-            .other_state()
-            .unprotected_card_locs()
-            .map(|loc| loc.for_player(self.player.other()))
-            .collect_vec();
-
-        // ask the player to damage one of them
-        self.choose_and_damage_card(target_locs)
-    }
-
-    /// Has this player damage any opponent card.
-    pub fn damage_any_enemy(&'v self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
-        // get all possible targets
-        let target_locs = self
-            .other_state()
-            .card_locs()
-            .map(|loc| loc.for_player(self.player.other()))
-            .collect_vec();
-
-        // ask the player to damage one of them
-        self.choose_and_damage_card(target_locs)
-    }
-
-    /// Has this player damage an unprotected opponent camp.
-    pub fn damage_unprotected_camp(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
-        // get all possible targets
-        let target_locs = self
-            .other_state()
-            .unprotected_card_locs()
-            .filter(|loc| loc.row().is_camp())
-            .map(|loc| loc.for_player(self.player.other()))
-            .collect_vec();
-
-        // ask the player to damage one of them
-        self.choose_and_damage_card(target_locs)
-    }
-
-    /// Has this player injure an unprotected opponent person.
-    /// Assumes that the opponent has at least one person.
-    pub fn injure_enemy(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
-        self.choose_and_damage_card(self.unprotected_enemies_vec())
-    }
-
-    /// Has this player destroy an unprotected opponent person.
-    /// Assumes that the opponent has at least one person.
-    pub fn destroy_enemy(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
-        self.choose_and_destroy_card(self.unprotected_enemies_vec())
-    }
-
     /// Injures all unprotected opponent people.
     pub fn injure_all_unprotected_enemies(&mut self) {
         self.game_state
             .damage_cards_at(self.unprotected_enemies_vec(), false)
             .expect("injure_all_unprotected_enemies should not end the game");
-    }
-
-    /// Returns a Vec of the locations of all unprotected opponent people.
-    fn unprotected_enemies_vec(&self) -> Vec<CardLocation> {
-        self.other_state()
-            .unprotected_person_locs()
-            .map(|loc| loc.for_player(self.player.other()))
-            .collect()
     }
 
     /// Destroys all injured opponent people.
@@ -539,51 +581,6 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameView<'g, 'ctype> {
         self.game_state
             .damage_cards_at(injured_enemy_locs, true)
             .expect("destroy_all_injured_enemies should not end the game");
-    }
-
-    /// Has this player choose and then damage a card from a given list of locations.
-    /// Returns the location of the card that was damaged.
-    pub fn choose_and_damage_card(
-        &'v self,
-        locs: Vec<CardLocation>,
-    ) -> ChoiceFuture<'g, 'ctype, CardLocation> {
-        DamageChoice::future(self.player, false, locs)
-    }
-
-    /// Has this player destroy one of their own people.
-    /// Assumes that the player has at least one person.
-    pub fn destroy_own_person(&'v self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
-        // get all possible targets
-        let target_locs = self
-            .my_state()
-            .person_locs()
-            .map(|loc| loc.for_player(self.player))
-            .collect_vec();
-
-        // ask the player to destroy one of them
-        self.choose_and_destroy_card(target_locs)
-    }
-
-    /// Has this player destroy an opponent camp.
-    pub fn destroy_enemy_camp(&self) -> ChoiceFuture<'g, 'ctype, CardLocation> {
-        // get all possible targets (non-destroyed camps)
-        let target_locs = self
-            .other_state()
-            .enumerate_camps()
-            .filter(|(_, camp)| !camp.is_destroyed())
-            .map(|(loc, _)| loc.for_player(self.player.other()))
-            .collect_vec();
-
-        // ask the player to destroy one of them
-        self.choose_and_destroy_card(target_locs)
-    }
-
-    /// Has this player choose and then destroy a card from a given list of locations.
-    pub fn choose_and_destroy_card(
-        &'v self,
-        locs: Vec<CardLocation>,
-    ) -> ChoiceFuture<'g, 'ctype, CardLocation> {
-        DamageChoice::future(self.player, true, locs)
     }
 
     /// Has this player restore one of their own damaged cards,
@@ -707,7 +704,10 @@ pub enum Action<'ctype> {
 impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
     /// Performs the action on the given game view.
     /// Returns whether the player's turn should end after this action.
-    fn perform(&self, mut game_view: GameView<'g, 'ctype>) -> Result<Choice<'ctype>, GameResult> {
+    fn perform(
+        &self,
+        mut game_view: GameViewMut<'g, 'ctype>,
+    ) -> Result<Choice<'ctype>, GameResult> {
         match *self {
             Action::PlayPerson(person_type) => {
                 // pay the person's cost and remove it from the player's hand
@@ -727,7 +727,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                     // No such restriction for other people.
                     None
                 };
-                let person = Person::new_non_punk(person_type, &game_view);
+                let person = Person::new_non_punk(person_type, &game_view.as_non_mut());
                 game_view
                     .play_person(person, destroyed_restriction)
                     .then(|game_state, _| Ok(Choice::new_actions(game_state)))
@@ -740,7 +740,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                     .remove_one(PersonOrEventType::Person(person_type));
 
                 // play the person into a column with a destroyed camp
-                let person = Person::new_non_punk(person_type, &game_view);
+                let person = Person::new_non_punk(person_type, &game_view.as_non_mut());
                 game_view
                     .play_person(person, Some(true))
                     .then(|game_state, _| Ok(Choice::new_actions(game_state)))
@@ -776,7 +776,9 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
             }
             Action::UsePersonAbility(ability, location) => {
                 // pay the ability's cost
-                game_view.game_state.spend_water(ability.cost(&game_view));
+                game_view
+                    .game_state
+                    .spend_water(ability.cost(&game_view.as_non_mut()));
 
                 // mark the person as no longer ready
                 game_view
@@ -793,7 +795,9 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
             }
             Action::UseCampAbility(ability, column_index) => {
                 // pay the ability's cost
-                game_view.game_state.spend_water(ability.cost(&game_view));
+                game_view
+                    .game_state
+                    .spend_water(ability.cost(&game_view.as_non_mut()));
 
                 // mark the camp as no longer ready
                 let camp = &mut game_view.my_state_mut().column_mut(column_index).camp;
@@ -816,7 +820,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
     }
 
     /// Formats the action for display.
-    pub fn format(&self, game_view: &'v GameView<'g, 'ctype>) -> Spans<'ctype> {
+    pub fn format(&self, game_view: &'v GameView<'g, 'ctype>) -> Spans<'static> {
         match *self {
             Action::PlayPerson(card) => make_spans!(
                 "Play ",
@@ -974,7 +978,7 @@ pub trait EventType: fmt::Debug + Sync {
     /// Returns a ChoiceFuture for the event's resolution.
     fn resolve<'v, 'g: 'v, 'ctype: 'g>(
         &'ctype self,
-        game_view: &'v mut GameView<'g, 'ctype>,
+        game_view: &'v mut GameViewMut<'g, 'ctype>,
     ) -> ChoiceFuture<'g, 'ctype>;
 
     /// Returns this event if it is the Raiders event, otherwise None.
@@ -1015,7 +1019,7 @@ impl EventType for RaidersEvent {
 
     fn resolve<'v, 'g: 'v, 'ctype: 'g>(
         &'ctype self,
-        game_view: &'v mut GameView<'g, 'ctype>,
+        game_view: &'v mut GameViewMut<'g, 'ctype>,
     ) -> ChoiceFuture<'g, 'ctype> {
         // have the other player choose one of their (non-destroyed) camps to damage
         let target_locs = game_view
@@ -1074,7 +1078,7 @@ impl IconEffect {
     /// Performs the effect for the current player.
     pub fn perform<'g, 'ctype: 'g>(
         &self,
-        mut game_view: GameView<'g, 'ctype>,
+        mut game_view: GameViewMut<'g, 'ctype>,
     ) -> Result<ChoiceFuture<'g, 'ctype>, GameResult> {
         match *self {
             IconEffect::Damage => {

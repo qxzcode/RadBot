@@ -1,6 +1,6 @@
 use super::choices::ChoiceFuture;
 use super::locations::CardLocation;
-use super::{GameResult, GameView, IconEffect};
+use super::{GameResult, GameView, GameViewMut, IconEffect};
 
 /// An ability on a camp or person.
 pub trait Ability: Sync {
@@ -17,7 +17,7 @@ pub trait Ability: Sync {
     /// Performs this ability.
     fn perform<'g, 'ctype: 'g>(
         &self,
-        game_view: GameView<'g, 'ctype>,
+        game_view: GameViewMut<'g, 'ctype>,
         card_loc: CardLocation,
     ) -> Result<ChoiceFuture<'g, 'ctype>, GameResult>;
 
@@ -51,7 +51,7 @@ impl Ability for IconAbility {
 
     fn perform<'g, 'ctype: 'g>(
         &self,
-        game_view: GameView<'g, 'ctype>,
+        game_view: GameViewMut<'g, 'ctype>,
         _card_loc: CardLocation,
     ) -> Result<ChoiceFuture<'g, 'ctype>, GameResult> {
         self.effect.perform(game_view)
@@ -71,7 +71,7 @@ macro_rules! ability {
         can_perform($game_view_1:ident) => $can_perform:expr;
         perform($game_view_2_1:ident $($game_view_2_2:ident)?, $card_loc:ident) => $perform:expr;
     } => {{
-        use $crate::radlands::{GameView, GameResult};
+        use $crate::radlands::{GameView, GameViewMut, GameResult};
         use $crate::radlands::locations::CardLocation;
         use $crate::radlands::choices::ChoiceFuture;
         use ::std::string::String;
@@ -95,7 +95,7 @@ macro_rules! ability {
 
             fn perform<'g, 'ctype: 'g>(
                 &self,
-                $game_view_2_1 $($game_view_2_2)?: GameView<'g, 'ctype>,
+                $game_view_2_1 $($game_view_2_2)?: GameViewMut<'g, 'ctype>,
                 $card_loc: CardLocation,
             ) -> Result<ChoiceFuture<'g, 'ctype>, GameResult> {
                 $perform

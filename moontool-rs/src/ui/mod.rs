@@ -86,7 +86,7 @@ lazy_static! {
 }
 
 // Sets the contents of the stats display for the given player.
-pub fn set_controller_stats(stats: Box<dyn ControllerStats + Send>, player: Player) {
+pub fn set_controller_stats(stats: Option<Box<dyn ControllerStats + Send>>, player: Player) {
     STATS_TX
         .lock()
         .unwrap()
@@ -103,11 +103,11 @@ struct HistoryEntry<'ctype> {
 }
 
 impl<'ctype> HistoryEntry<'ctype> {
-    fn format(&mut self) -> Spans<'ctype> {
+    fn format(&mut self) -> Spans<'static> {
         // TODO: this function shouldn't require &mut self
         // The issue is with GameView - make GameViewMut?
         self.choice
-            .format_option(self.chosen_option, &mut self.game_state)
+            .format_option(self.chosen_option, &self.game_state)
     }
 }
 
@@ -119,8 +119,8 @@ enum InputMode {
 /// An event that triggers a redraw.
 enum RedrawEvent {
     Input(Event),
-    GameUpdate(GameState<'static>, Result<Choice<'static>, GameResult>),
-    StatsUpdate(Box<dyn ControllerStats + Send>, Player),
+    GameUpdate(Box<(GameState<'static>, Result<Choice<'static>, GameResult>)>),
+    StatsUpdate(Option<Box<dyn ControllerStats + Send>>, Player),
     Abort,
 }
 
@@ -132,8 +132,8 @@ struct AppState {
     /// Current input mode
     input_mode: InputMode,
 
-    p1_stats: Option<Box<dyn ControllerStats>>,
-    p2_stats: Option<Box<dyn ControllerStats>>,
+    p1_stats: Option<Box<dyn ControllerStats + Send>>,
+    p2_stats: Option<Box<dyn ControllerStats + Send>>,
 
     game_history: Arc<Mutex<Vec<HistoryEntry<'static>>>>,
     log_messages: Vec<String>,
@@ -217,13 +217,14 @@ impl AppState {
                             }
                         }
                     }
-                    RedrawEvent::GameUpdate(new_state, new_choice) => {
+                    RedrawEvent::GameUpdate(update_data) => {
+                        let (new_state, new_choice) = *update_data;
                         self.cur_state = new_state;
                         self.cur_choice = new_choice;
                     }
                     RedrawEvent::StatsUpdate(stats, player) => match player {
-                        Player::Player1 => self.p1_stats = Some(stats),
-                        Player::Player2 => self.p2_stats = Some(stats),
+                        Player::Player1 => self.p1_stats = stats,
+                        Player::Player2 => self.p2_stats = stats,
                     },
                     RedrawEvent::Abort => break 'main_loop,
                 }
@@ -319,7 +320,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut AppState) {
         let num_options = choice.num_options(&app.cur_state);
         options = (0..num_options)
             .map(|i| {
-                let mut spans = choice.format_option(i, &mut app.cur_state);
+                let mut spans = choice.format_option(i, &app.cur_state);
                 let num_string = format!("({})", i + 1);
                 spans.0.insert(0, Span::raw(format!("{num_string:>5}  ")));
                 ListItem::new(spans)
@@ -422,18 +423,26 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut AppState) {
     );
 
     // render the stats pane
+    let p1_stats = app.p1_stats.as_mut().map(|s| (s, Player::Player1));
+    let p2_stats = app.p2_stats.as_mut().map(|s| (s, Player::Player2));
+    let stats_info = match app.cur_state.cur_player {
+        Player::Player1 => p1_stats.or(p2_stats),
+        Player::Player2 => p2_stats.or(p1_stats),
+    };
+    let (stats_widget, stats_player) = match stats_info {
+        Some((w, p)) => (Some(w), Some(p)),
+        None => (None, None),
+    };
     let block = Block::default()
-        .title(" Stats ")
+        .title(match stats_player {
+            None => " Stats ",
+            Some(Player::Player1) => " Stats (Player 1) ",
+            Some(Player::Player2) => " Stats (Player 2) ",
+        })
         .title_alignment(Alignment::Center)
         .borders(Borders::ALL);
     let inner_area = block.inner(stats_rect);
     f.render_widget(block, stats_rect);
-    let p1_stats = app.p1_stats.as_mut();
-    let p2_stats = app.p2_stats.as_mut();
-    let stats_widget = match app.cur_state.cur_player {
-        Player::Player1 => p1_stats.or(p2_stats),
-        Player::Player2 => p2_stats.or(p1_stats),
-    };
     if let Some(stats_widget) = stats_widget {
         f.render_widget(StatsWidget(stats_widget.as_mut()), inner_area);
     }

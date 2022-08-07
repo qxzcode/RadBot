@@ -9,7 +9,7 @@ use crate::radlands::observed_state::ObservedState;
 use crate::radlands::*;
 
 use super::monte_carlo::{
-    compute_rollout_score, get_best_options, get_score, print_option_stats, randomize_unobserved,
+    compute_rollout_score, get_best_options, get_score, randomize_unobserved, show_option_stats,
     OptionStats,
 };
 
@@ -73,14 +73,9 @@ impl<'g, 'ctype: 'g, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIE
             .expect("root state not explored")
     }
 
-    fn print_root_option_stats(
-        &self,
-        game_view: &GameView<'g, 'ctype>,
-        choice: &Choice<'ctype>,
-        is_first_print: bool,
-    ) {
+    fn show_root_option_stats(&self, game_view: &GameView<'g, 'ctype>, choice: &Choice<'ctype>) {
         let (rollouts, option_stats) = self.get_root_option_stats(game_view, choice);
-        print_option_stats(option_stats, rollouts, game_view, choice, is_first_print);
+        show_option_stats(option_stats, rollouts as usize, game_view, choice);
     }
 
     fn prune_explored_states(&mut self) {
@@ -120,7 +115,6 @@ impl<'g, 'ctype: 'g, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIE
         self.current_ply += 1;
         self.prune_explored_states();
 
-        let mut has_printed = false;
         let mut last_print_time = start_time;
         let mut num_samples = 0;
         while start_time.elapsed() < self.choice_time_limit {
@@ -133,15 +127,14 @@ impl<'g, 'ctype: 'g, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIE
             if !QUIET {
                 let now = Instant::now();
                 let elapsed = now.duration_since(last_print_time);
-                if !has_printed || elapsed > Duration::from_millis(100) {
-                    self.print_root_option_stats(game_view, choice, !has_printed);
-                    has_printed = true;
+                if elapsed > Duration::from_millis(100) {
+                    self.show_root_option_stats(game_view, choice);
                     last_print_time = now;
                 }
             }
         }
         if !QUIET {
-            self.print_root_option_stats(game_view, choice, !has_printed);
+            self.show_root_option_stats(game_view, choice);
             println!(
                 "{:?}: performed {} samples in {:?}",
                 self,
@@ -248,17 +241,7 @@ impl<'ctype, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIET: bool>
         game_view: &GameView<'g, 'ctype>,
         choice: &Choice<'ctype>,
     ) -> usize {
-        if !QUIET && matches!(choice, Choice::Action(_)) {
-            println!("\nBoard state:\n{}", game_view.game_state);
-        }
-        let chosen_option = self.mcts_choose_impl(game_view, choice);
-        if !QUIET {
-            println!(
-                "{BOLD}{self:?} chose:{RESET} {}",
-                choice.format_option(chosen_option, game_view),
-            );
-        }
-        chosen_option
+        self.mcts_choose_impl(game_view, choice)
     }
 }
 

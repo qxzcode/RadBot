@@ -1,15 +1,19 @@
-use crossterm::style::Stylize;
-use crossterm::{cursor, QueueableCommand};
 use ordered_float::NotNan;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
 use std::fmt;
-use std::io::stdout;
 use std::time::{Duration, Instant};
+use tui::buffer::Buffer;
+use tui::layout::Rect;
+use tui::style::{Color, Modifier, Style};
+use tui::widgets::{List, ListItem, Widget};
 
 use crate::play_to_end;
 use crate::radlands::choices::*;
 use crate::radlands::*;
+use crate::ui::set_controller_stats;
+
+use super::ControllerStats;
 
 pub fn randomize_unobserved<'ctype>(game_state: &GameState<'ctype>) -> GameState<'ctype> {
     let mut rng = thread_rng();
@@ -90,41 +94,52 @@ impl OptionStats {
     }
 }
 
-pub fn print_option_stats<'g, 'ctype: 'g>(
+pub fn show_option_stats<'g, 'ctype: 'g>(
     option_stats_vec: &[OptionStats],
-    parent_rollouts: u32,
+    parent_rollouts: usize,
     game_view: &GameView<'g, 'ctype>,
     choice: &Choice<'ctype>,
-    is_first_print: bool,
 ) {
-    let mut stdout = stdout();
-
-    if !is_first_print {
-        let num_lines = option_stats_vec.len().try_into().unwrap();
-        stdout.queue(cursor::MoveToPreviousLine(num_lines)).unwrap();
-    }
-
     let max_visit_count = option_stats_vec
         .iter()
         .map(|option_stats| option_stats.num_rollouts)
         .max()
-        .expect("option_stats_vec is empty");
+        .expect("self.option_stats is empty");
 
-    for (option_index, option_stats) in option_stats_vec.iter().enumerate() {
-        let mut stats_str = format!(
-            "{:8}  {:6.2}%  {:6.2}%",
-            option_stats.num_rollouts,
-            (option_stats.num_rollouts as f64) / (parent_rollouts as f64) * 100.0,
-            option_stats.win_rate() * 100.0,
-        );
-        if option_stats.num_rollouts == max_visit_count {
-            stats_str = stats_str.bold().yellow().to_string();
-        }
-        println!(
-            "{}   {}",
-            stats_str,
-            choice.format_option(option_index, game_view),
-        );
+    let lines = option_stats_vec
+        .iter()
+        .enumerate()
+        .map(|(option_index, option_stats)| {
+            let stats = format!(
+                "{:8}  {:6.2}%  {:6.2}%",
+                option_stats.num_rollouts,
+                (option_stats.num_rollouts as f64) / (parent_rollouts as f64) * 100.0,
+                option_stats.win_rate() * 100.0,
+            );
+            let stats_style = if option_stats.num_rollouts == max_visit_count {
+                Style::default()
+                    .add_modifier(Modifier::BOLD)
+                    .fg(Color::Yellow)
+            } else {
+                Style::default()
+            };
+            let mut spans = choice.format_option(option_index, game_view.game_state);
+            spans
+                .0
+                .splice(0..0, [Span::styled(stats, stats_style), "   ".into()]);
+            ListItem::new(spans)
+        })
+        .collect_vec();
+
+    set_controller_stats(Some(Box::new(StatsWidget { lines })), game_view.player);
+}
+
+struct StatsWidget<'a> {
+    lines: Vec<ListItem<'a>>,
+}
+impl ControllerStats for StatsWidget<'_> {
+    fn render(&mut self, area: Rect, buf: &mut Buffer) {
+        List::new(self.lines.clone()).render(area, buf);
     }
 }
 
@@ -143,15 +158,13 @@ pub fn get_best_options(option_stats_vec: &[OptionStats]) -> Vec<usize> {
         .collect()
 }
 
-pub struct MonteCarloController<F, const QUIET: bool = false> {
+pub struct MonteCarloController<F> {
     pub player: Player,
     pub choice_time_limit: Duration,
     pub make_rollout_controller: F,
 }
 
-impl<'ctype, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIET: bool>
-    MonteCarloController<F, QUIET>
-{
+impl<'ctype, C: PlayerController<'ctype>, F: Fn(Player) -> C> MonteCarloController<F> {
     fn monte_carlo_choose_impl<'g>(
         &self,
         game_view: &GameView<'g, 'ctype>,
@@ -179,10 +192,7 @@ impl<'ctype, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIET: bool>
 
         let mut last_print_time = start_time;
         let mut rollout_num = num_options;
-        if !QUIET {
-            let rollout_num: u32 = rollout_num.try_into().unwrap();
-            print_option_stats(&option_stats_vec, rollout_num, game_view, choice, true);
-        }
+        show_option_stats(&option_stats_vec, rollout_num, game_view, choice);
         while start_time.elapsed() < self.choice_time_limit {
             // choose a choice to simulate using UCB1
             let (option_index, option_stats) = option_stats_vec
@@ -203,20 +213,14 @@ impl<'ctype, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIET: bool>
             );
 
             // update the live stats display
-            if !QUIET {
-                let now = Instant::now();
-                let elapsed = now.duration_since(last_print_time);
-                if elapsed > Duration::from_millis(100) {
-                    let rollout_num: u32 = rollout_num.try_into().unwrap();
-                    print_option_stats(&option_stats_vec, rollout_num, game_view, choice, false);
-                    last_print_time = now;
-                }
+            let now = Instant::now();
+            let elapsed = now.duration_since(last_print_time);
+            if elapsed > Duration::from_millis(100) {
+                show_option_stats(&option_stats_vec, rollout_num, game_view, choice);
+                last_print_time = now;
             }
         }
-        if !QUIET {
-            let rollout_num: u32 = rollout_num.try_into().unwrap();
-            print_option_stats(&option_stats_vec, rollout_num, game_view, choice, false);
-        }
+        show_option_stats(&option_stats_vec, rollout_num, game_view, choice);
 
         // return a random best (maximum visit count) choice
         *get_best_options(&option_stats_vec)
@@ -225,29 +229,19 @@ impl<'ctype, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIET: bool>
     }
 }
 
-impl<'ctype, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIET: bool>
-    PlayerController<'ctype> for MonteCarloController<F, QUIET>
+impl<'ctype, C: PlayerController<'ctype>, F: Fn(Player) -> C> PlayerController<'ctype>
+    for MonteCarloController<F>
 {
     fn choose_option<'g>(
         &mut self,
         game_view: &GameView<'g, 'ctype>,
         choice: &Choice<'ctype>,
     ) -> usize {
-        if !QUIET && matches!(choice, Choice::Action(_)) {
-            println!("\nBoard state:\n{}", game_view.game_state);
-        }
-        let chosen_option = self.monte_carlo_choose_impl(game_view, choice);
-        if !QUIET {
-            println!(
-                "{BOLD}{self:?} chose:{RESET} {}",
-                choice.format_option(chosen_option, game_view),
-            );
-        }
-        chosen_option
+        self.monte_carlo_choose_impl(game_view, choice)
     }
 }
 
-impl<F, const QUIET: bool> fmt::Debug for MonteCarloController<F, QUIET> {
+impl<F> fmt::Debug for MonteCarloController<F> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "MonteCarloController[{:?}]", self.player)
     }

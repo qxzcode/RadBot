@@ -87,7 +87,7 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType], args: &Args) {
     } else {
         let ai_time_limit = Duration::from_secs_f64(args.ai_time_limit);
         println!("AI time limit: {:?}", ai_time_limit);
-        p1 = Box::new(MonteCarloController::<_, false> {
+        p1 = Box::new(MonteCarloController {
             player: Player::Player1,
             choice_time_limit: ai_time_limit,
             make_rollout_controller: |_| RandomController,
@@ -108,7 +108,6 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType], args: &Args) {
                 GameResult::Tie => "tie!",
             }
         );
-        println!("\nFinal state:\n{}", game_state);
     }
 }
 

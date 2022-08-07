@@ -8,7 +8,10 @@ use crate::{
     do_one_choice,
     radlands::{
         choices::Choice,
-        controllers::{human::HumanController, mcts::MCTSController, random::RandomController},
+        controllers::{
+            human::HumanController, mcts::MCTSController, monte_carlo::MonteCarloController,
+            random::RandomController,
+        },
         locations::Player,
         GameResult, GameState,
     },
@@ -24,13 +27,17 @@ pub(super) fn game_thread_main(
     let mut game_state = initial_state;
     let mut cur_choice = initial_choice;
 
-    let p1 = &mut RandomController;
-    // let p1 =
-    //     &mut MCTSController::<_, true>::new(Player::Player2, Duration::from_secs_f64(3.0), |_| {
-    //         RandomController
-    //     });
-    let p2 = &mut HumanController;
+    let p1 = &mut MonteCarloController {
+        player: Player::Player1,
+        choice_time_limit: Duration::from_secs_f64(3.0),
+        make_rollout_controller: |_| RandomController,
+    };
+    // let p2 = &mut HumanController;
     // let p2 = &mut RandomController;
+    let p2 =
+        &mut MCTSController::<_, true>::new(Player::Player2, Duration::from_secs_f64(3.0), |_| {
+            RandomController
+        });
 
     while let Ok(choice) = &cur_choice {
         // save the game state and choice for the history entry
@@ -50,10 +57,10 @@ pub(super) fn game_thread_main(
 
         // update the UI's state and choice
         event_tx
-            .send(RedrawEvent::GameUpdate(
+            .send(RedrawEvent::GameUpdate(Box::new((
                 game_state.clone(),
                 cur_choice.clone(),
-            ))
+            ))))
             .expect("Failed to send GameUpdate event");
     }
 }

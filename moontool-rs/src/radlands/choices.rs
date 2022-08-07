@@ -120,8 +120,8 @@ impl<'v, 'g: 'v, 'ctype: 'g> Choice<'ctype> {
     pub fn format_option(
         &self,
         option: usize,
-        game_state: &'g mut GameState<'ctype>,
-    ) -> Spans<'ctype> {
+        game_state: &'g GameState<'ctype>,
+    ) -> Spans<'static> {
         match self {
             Choice::Action(action_choice) => {
                 action_choice.actions()[option].format(&game_state.view_for_cur())
@@ -278,7 +278,7 @@ impl<'g, 'ctype: 'g> ActionChoice<'ctype> {
         game_state: &'g mut GameState<'ctype>,
         action: &Action<'ctype>,
     ) -> Result<Choice<'ctype>, GameResult> {
-        action.perform(game_state.view_for_cur())
+        action.perform(game_state.view_for_cur_mut())
     }
 }
 
@@ -382,7 +382,7 @@ choice_struct! {
     /// Plays the person at the given location,
     /// updating the game state and returning the next Choice.
     pub fn choose(&self, game_state, play_loc: PlayLocation) {
-        let mut view = game_state.view_for(self.chooser);
+        let mut view = game_state.view_for_mut(self.chooser);
 
         // place the card onto the board
         let col = view.my_state_mut().column_mut(play_loc.column());
@@ -460,7 +460,7 @@ choice_struct! {
     pub fn choose(&self, game_state, icon_effect: Option<IconEffect>) {
         if let Some(icon_effect) = icon_effect {
             // perform the icon effect
-            let future = icon_effect.perform(game_state.view_for(self.chooser))?;
+            let future = icon_effect.perform(game_state.view_for_mut(self.chooser))?;
             (future.choice_builder)(self.then.clone())
         } else {
             // no icon effect was chosen, so just advance the game state until the next choice

@@ -277,5 +277,7 @@ impl Widget for GameStateWidget<'_, '_, '_> {
 
             self.render_player(player_rect, buf, player);
         }
+
+        // TODO: show the number of cards in the deck/discard?
     }
 }

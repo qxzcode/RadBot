@@ -10,11 +10,11 @@ use super::abilities::*;
 use super::choices::*;
 use super::locations::PlayLocation;
 use super::styles::*;
-use super::{GameResult, GameView, IconEffect};
+use super::{GameResult, GameViewMut, IconEffect};
 
 /// Type alias for on_enter_play handler functions.
 type OnEnterPlayHandler = for<'g, 'ctype> fn(
-    GameView<'g, 'ctype>,
+    GameViewMut<'g, 'ctype>,
     PlayLocation,
 ) -> Result<ChoiceFuture<'g, 'ctype>, GameResult>;
 
@@ -164,7 +164,7 @@ pub fn get_person_types() -> Vec<PersonType> {
                 perform(game_view) => {
                     let player = game_view.player;
                     Ok(game_view.destroy_own_person().then_future_chain(move |game_state, _| {
-                        IconEffect::Damage.perform(game_state.view_for(player))
+                        IconEffect::Damage.perform(game_state.view_for_mut(player))
                     }))
                 };
             }],
@@ -231,7 +231,7 @@ pub fn get_person_types() -> Vec<PersonType> {
                     let player = game_view.player;
                     Ok(game_view.damage_enemy().then_future(move |game_state, damaged_loc| {
                         if damaged_loc.row().is_camp() {
-                            game_state.view_for(player).draw_card_into_hand()?;
+                            game_state.view_for_mut(player).draw_card_into_hand()?;
                         }
                         Ok(())
                     }))
@@ -282,7 +282,7 @@ pub fn get_person_types() -> Vec<PersonType> {
 
                             // return the card's junk effect (if it can be performed)
                             let effect = card_type.junk_effect();
-                            if effect.can_perform(&game_view) {
+                            if effect.can_perform(&game_view.as_non_mut()) {
                                 Some(Ok(effect))
                             } else {
                                 None
@@ -334,6 +334,8 @@ pub fn get_person_types() -> Vec<PersonType> {
             junk_effect: IconEffect::Injure,
             cost: 1,
             abilities: [ability! {
+                // TODO: What if you use Adrenaline Lab on Rescue Team and rescue itself? >.<
+                //       It should probably allow taking R.T. into the hand and not destroy it.
                 description => "Return one of your people to your hand";
                 cost => 0;
                 can_perform => true;
