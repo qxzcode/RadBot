@@ -217,7 +217,9 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
     pub fn has_special_person(&self, special_type: SpecialType) -> bool {
         self.people().any(|person| {
             matches!(person,
-                Person::NonPunk { person_type, .. } if person_type.special_type == special_type
+                Person::NonPunk { person_type, status, .. }
+                    if person_type.special_type == special_type
+                       && *status != NonPunkStatus::Injured
             )
         })
     }
@@ -350,6 +352,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
                 Person::NonPunk {
                     person_type,
                     status,
+                    ..
                 } if person_type.special_type == SpecialType::ArgoYesky
                     && *status != NonPunkStatus::Injured =>
                 {
@@ -374,6 +377,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
                 Person::NonPunk {
                     person_type,
                     status,
+                    ..
                 } => {
                     if *status == NonPunkStatus::Ready {
                         // the person's own abilities
@@ -412,6 +416,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
                                 if let Person::NonPunk {
                                     person_type: other_person_type,
                                     status: NonPunkStatus::Ready,
+                                    ..
                                 } = other_person
                                 {
                                     for ability in &other_person_type.abilities {
@@ -466,6 +471,7 @@ impl<'ctype> CardColumn<'ctype> {
                 camp_type,
                 status: CampStatus::Undamaged,
                 is_ready: true,
+                times_used: 0,
             },
             person_slots: [None, None],
         }
@@ -598,6 +604,9 @@ pub struct Camp<'ctype> {
 
     /// Whether the camp is ready.
     is_ready: bool,
+
+    /// The number of times an ability on this camp has been used this turn.
+    times_used: u8,
 }
 
 impl Camp<'_> {
@@ -640,9 +649,26 @@ impl Camp<'_> {
         self.is_ready && self.status != CampStatus::Destroyed
     }
 
-    /// Sets whether the camp is ready. Has no effect if the camp is destroyed.
-    pub fn set_ready(&mut self, is_ready: bool) {
-        self.is_ready = is_ready;
+    /// Sets this camp to be not ready.
+    pub fn set_not_ready(&mut self) {
+        self.is_ready = false;
+    }
+
+    /// Increments this camp's times_used counter.
+    pub fn increment_times_used(&mut self) {
+        self.times_used += 1;
+    }
+
+    /// Returns the value of this camp's times_used counter.
+    pub fn times_used(&self) -> u8 {
+        self.times_used
+    }
+
+    /// Resets this camp's readiness and use counter (used at the end of a turn).
+    /// Has no effect if the camp is destroyed.
+    pub fn end_turn_reset(&mut self) {
+        self.is_ready = true;
+        self.times_used = 0;
     }
 }
 
@@ -671,6 +697,9 @@ pub enum Person<'ctype> {
     Punk {
         /// Whether the punk is ready.
         is_ready: bool,
+
+        /// The number of times an ability on this person has been used this turn.
+        times_used: u8,
     },
     NonPunk {
         /// The identity of the person card.
@@ -678,6 +707,9 @@ pub enum Person<'ctype> {
 
         /// The damage/readiness status of the person.
         status: NonPunkStatus,
+
+        /// The number of times an ability on this person has been used this turn.
+        times_used: u8,
     },
 }
 
@@ -693,16 +725,25 @@ pub enum NonPunkStatus {
 }
 
 impl<'ctype> Person<'ctype> {
-    /// Creates a non-ready punk.
-    pub(super) fn new_punk() -> Self {
-        Person::Punk { is_ready: false }
+    /// Creates a punk to be played onto the board.
+    /// The punk will be ready iff Karli Blaze's trait is active; otherwise, it will be not ready.
+    pub(super) fn new_punk(game_view: &GameView<'_, 'ctype>) -> Self {
+        Person::Punk {
+            is_ready: game_view
+                .my_state()
+                .has_special_person(SpecialType::KarliBlaze),
+            times_used: 0,
+        }
     }
 
     /// Creates a Person from a person type to be played onto the board.
     /// The supplied view must be for the player playing the person.
     /// The person will be ready if person_type.enters_play_ready is true or if
     /// Karli Blaze's trait is active; otherwise, it will be not ready and uninjured.
-    pub(super) fn new_non_punk(person_type: &'ctype PersonType, game_view: &GameView) -> Self {
+    pub(super) fn new_non_punk(
+        person_type: &'ctype PersonType,
+        game_view: &GameView<'_, 'ctype>,
+    ) -> Self {
         let force_ready = game_view
             .my_state()
             .has_special_person(SpecialType::KarliBlaze);
@@ -714,6 +755,7 @@ impl<'ctype> Person<'ctype> {
             } else {
                 NonPunkStatus::NotReady
             },
+            times_used: 0,
         }
     }
 
@@ -737,20 +779,6 @@ impl<'ctype> Person<'ctype> {
         }
     }
 
-    /// Sets this person to be ready. Has no effect if the person is injured or already ready.
-    pub fn set_ready(&mut self) {
-        match self {
-            Person::Punk { is_ready, .. } => {
-                *is_ready = true;
-            }
-            Person::NonPunk { status, .. } => {
-                if *status == NonPunkStatus::NotReady {
-                    *status = NonPunkStatus::Ready;
-                }
-            }
-        }
-    }
-
     /// Sets this person to be not ready. Has no effect if the person is injured or already not
     /// ready.
     pub fn set_not_ready(&mut self) {
@@ -765,6 +793,43 @@ impl<'ctype> Person<'ctype> {
             }
         }
     }
+
+    /// Increments this person's times_used counter.
+    pub fn increment_times_used(&mut self) {
+        match self {
+            Person::Punk { times_used, .. } => *times_used += 1,
+            Person::NonPunk { times_used, .. } => *times_used += 1,
+        }
+    }
+
+    /// Returns the value of this person's times_used counter.
+    pub fn times_used(&self) -> u8 {
+        match self {
+            Person::Punk { times_used, .. } => *times_used,
+            Person::NonPunk { times_used, .. } => *times_used,
+        }
+    }
+
+    /// Resets this person's readiness and use counter (used at the end of a turn).
+    pub fn end_turn_reset(&mut self) {
+        match self {
+            Person::Punk {
+                is_ready,
+                times_used,
+            } => {
+                *is_ready = true;
+                *times_used = 0;
+            }
+            Person::NonPunk {
+                status, times_used, ..
+            } => {
+                if *status == NonPunkStatus::NotReady {
+                    *status = NonPunkStatus::Ready;
+                }
+                *times_used = 0;
+            }
+        }
+    }
 }
 
 impl StyledName for Person<'_> {
@@ -775,6 +840,7 @@ impl StyledName for Person<'_> {
             Person::NonPunk {
                 person_type,
                 status,
+                ..
             } => Span::styled(
                 person_type.name,
                 match status {

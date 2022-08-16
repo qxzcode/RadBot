@@ -503,7 +503,15 @@ pub fn get_person_types() -> Vec<PersonType> {
             enters_play_ready: true,
             special_type: KarliBlaze, // Trait: all your people enter play ready
         },
-        // TODO: Vera Vosh
+        person_type! {
+            name: "Vera Vosh",
+            num_in_deck: 1,
+            junk_effect: IconEffect::GainPunk,
+            cost: 3,
+            abilities: [icon_ability(1, IconEffect::Injure)],
+            special_type: VeraVosh, // Trait: the first time you use a card's ability each turn,
+                                    //        that card stays ready
+        },
         person_type! {
             name: "Molgur Stang",
             num_in_deck: 1,

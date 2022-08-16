@@ -172,11 +172,11 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
     /// Ends the current player's turn and starts the next player's turn.
     /// Returns the next Choice.
     pub fn end_turn(&'g mut self) -> Result<Choice<'ctype>, GameResult> {
-        // set all camps and uninjured people to be ready
+        // set all camps and uninjured people to be ready, and reset use counts
         for col in &mut self.player_mut(self.cur_player).columns {
-            col.camp.set_ready(true);
+            col.camp.end_turn_reset();
             for person in col.people_mut() {
-                person.set_ready();
+                person.end_turn_reset();
             }
         }
 
@@ -241,6 +241,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                     Person::NonPunk {
                         person_type,
                         status,
+                        ..
                     } => {
                         if destroy || *status == NonPunkStatus::Injured {
                             // the person was killed/destroyed;
@@ -621,7 +622,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameViewMut<'g, 'ctype> {
     /// Does nothing if the player's board is full.
     pub fn gain_punk(self) -> ChoiceFuture<'g, 'ctype> {
         if self.my_state().has_empty_person_slot() {
-            let punk = Person::new_punk();
+            let punk = Person::new_punk(&self.as_non_mut());
             self.play_person(punk, None)
         } else {
             self.immediate_future()
@@ -776,12 +777,19 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                     .game_state
                     .spend_water(ability.cost(&game_view.as_non_mut()));
 
-                // mark the person as no longer ready
-                game_view
+                // mark the person as no longer ready (unless Vera Vosh's trait is active and it's
+                // the first time using this person this turn)
+                let is_vera_vosh_trait_active = game_view
+                    .my_state()
+                    .has_special_person(SpecialType::VeraVosh);
+                let person = game_view
                     .my_state_mut()
                     .person_mut_slot(location)
-                    .expect("Tried to use a person ability, but there was no person in the slot")
-                    .set_not_ready();
+                    .expect("Tried to use a person ability, but there was no person in the slot");
+                person.increment_times_used();
+                if !(is_vera_vosh_trait_active && person.times_used() == 1) {
+                    person.set_not_ready();
+                }
 
                 // perform the ability
                 let card_loc = location.for_player(game_view.player);
@@ -795,9 +803,16 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
                     .game_state
                     .spend_water(ability.cost(&game_view.as_non_mut()));
 
-                // mark the camp as no longer ready
+                // mark the camp as no longer ready (unless Vera Vosh's trait is active and it's
+                // the first time using this camp this turn)
+                let is_vera_vosh_trait_active = game_view
+                    .my_state()
+                    .has_special_person(SpecialType::VeraVosh);
                 let camp = &mut game_view.my_state_mut().column_mut(column_index).camp;
-                camp.set_ready(false);
+                camp.increment_times_used();
+                if !(is_vera_vosh_trait_active && camp.times_used() == 1) {
+                    camp.set_not_ready();
+                }
 
                 // perform the ability
                 let card_loc =
