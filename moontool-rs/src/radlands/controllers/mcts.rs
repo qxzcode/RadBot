@@ -1,16 +1,19 @@
 use rand::thread_rng;
+use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::fmt;
 use std::time::{Duration, Instant};
+use tui::widgets::ListItem;
 
 use crate::radlands::choices::*;
 use crate::radlands::observed_state::ObservedState;
 use crate::radlands::*;
+use crate::ui;
 
 use super::monte_carlo::{
-    compute_rollout_score, get_best_options, get_score, randomize_unobserved, show_option_stats,
-    OptionStats,
+    compute_rollout_score, format_option_stats, get_best_options, get_score, randomize_unobserved,
+    OptionStats, StatsWidget,
 };
 
 #[derive(Debug, Clone)]
@@ -37,7 +40,7 @@ impl StateStats {
     }
 }
 
-pub struct MCTSController<'ctype, F, const QUIET: bool = false> {
+pub struct MCTSController<'ctype, F> {
     pub player: Player,
     pub choice_time_limit: Duration,
     pub make_rollout_controller: F,
@@ -46,9 +49,7 @@ pub struct MCTSController<'ctype, F, const QUIET: bool = false> {
     current_ply: u32,
 }
 
-impl<'g, 'ctype: 'g, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIET: bool>
-    MCTSController<'ctype, F, QUIET>
-{
+impl<'g, 'ctype: 'g, C: PlayerController<'ctype>, F: Fn(Player) -> C> MCTSController<'ctype, F> {
     pub fn new(player: Player, choice_time_limit: Duration, make_rollout_controller: F) -> Self {
         Self {
             player,
@@ -64,7 +65,7 @@ impl<'g, 'ctype: 'g, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIE
         game_view: &GameView<'g, 'ctype>,
         choice: &Choice<'ctype>,
     ) -> (u32, &[OptionStats]) {
-        let game_state = &game_view.game_state;
+        let game_state = game_view.game_state;
         let chooser = choice.chooser(game_state);
         let observed_state = ObservedState::from_game_state(game_state, choice, chooser);
         self.explored_states
@@ -73,29 +74,120 @@ impl<'g, 'ctype: 'g, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIE
             .expect("root state not explored")
     }
 
-    fn show_root_option_stats(&self, game_view: &GameView<'g, 'ctype>, choice: &Choice<'ctype>) {
-        let (rollouts, option_stats) = self.get_root_option_stats(game_view, choice);
-        show_option_stats(option_stats, rollouts as usize, game_view, choice);
+    fn show_stats(
+        &self,
+        game_view: &GameView<'g, 'ctype>,
+        choice: &Choice<'ctype>,
+        num_samples: i32,
+        start_time: Instant,
+    ) {
+        let mut lines;
+        let title;
+        if ui::get_debug_counter() % 2 == 0 {
+            title = "Options at current choice root:";
+            let (rollouts, option_stats) = self.get_root_option_stats(game_view, choice);
+            lines = format_option_stats(option_stats, rollouts as usize, game_view, choice);
+        } else {
+            title = "Most visited sequence:";
+            lines = self.format_predicted_sequence(game_view, choice);
+        }
+
+        let elapsed = start_time.elapsed();
+        let top_lines = [
+            format!(
+                "For this choice, {num_samples} samples performed in {elapsed:.1?} ({:.1} samples/sec)",
+                (num_samples as f64) / elapsed.as_secs_f64(),
+            ),
+            format!("Nodes in cache: {}", self.explored_states.len()),
+            " ".into(), // creates a blank line
+            title.into(),
+            "# Visits  Visit %   Win %    Option".into(),
+            "--------  -------  -------   ------".into(),
+        ];
+        lines.splice(0..0, top_lines.into_iter().map(ListItem::new));
+
+        ui::set_controller_stats(Some(Box::new(StatsWidget { lines })), game_view.player);
+    }
+
+    fn format_predicted_sequence(
+        &self,
+        game_view: &GameView<'g, 'ctype>,
+        choice: &Choice<'ctype>,
+    ) -> Vec<ListItem<'static>> {
+        let mut game_state = randomize_unobserved(game_view.game_state);
+        let mut choice = Cow::Borrowed(choice);
+
+        // collect most likely move sequence
+        let mut lines = Vec::new();
+        let mut root_count = None;
+        loop {
+            // immediately continue to the next move if there's only one option
+            let num_options = choice.num_options(&game_state);
+
+            let (option_index, stats) = if num_options == 1 {
+                (0, None)
+            } else {
+                // get which player needs to make a move
+                let chooser = choice.chooser(&game_state);
+
+                // get the observed state of the game (hash table key)
+                let observed_state = ObservedState::from_game_state(&game_state, &choice, chooser);
+
+                if let Some(stats) = self.explored_states.get(&observed_state) {
+                    if root_count.is_none() {
+                        root_count = Some(stats.num_rollouts);
+                    }
+
+                    let (i, opt) = stats
+                        .options
+                        .iter()
+                        .enumerate()
+                        .max_by_key(|(_i, opt)| opt.num_rollouts)
+                        .unwrap();
+                    (
+                        i,
+                        Some((
+                            opt.num_rollouts,
+                            (opt.num_rollouts as f64) / (root_count.unwrap() as f64) * 100.0,
+                            opt.win_rate() * 100.0,
+                        )),
+                    )
+                } else {
+                    // we've reached a state that hasn't been visited, so stop the traversal
+                    break;
+                }
+            };
+
+            lines.push(ListItem::new({
+                let mut spans = choice.format_option(option_index, &game_state);
+                spans.0.splice(
+                    0..0,
+                    [if let Some((count, percent, win_rate)) = stats {
+                        format!("{count:8}  {percent:6.2}%  {win_rate:6.2}%   ")
+                    } else {
+                        " ".repeat(8 + (2 + 6 + 1) * 2 + 3)
+                    }
+                    .into()],
+                );
+                spans
+            }));
+
+            match choice.choose(&mut game_state, option_index) {
+                Err(_game_result) => break,
+                Ok(next_choice) => choice = Cow::Owned(next_choice),
+            };
+        }
+
+        lines
     }
 
     fn prune_explored_states(&mut self) {
-        let start_time = Instant::now();
-        let start_count = self.explored_states.len();
-
         const PAST_PLIES_TO_KEEP: u32 = 5;
         if self.current_ply > PAST_PLIES_TO_KEEP {
             let cutoff_ply = self.current_ply - PAST_PLIES_TO_KEEP;
             self.explored_states
                 .retain(|_, state_stats| state_stats.last_visit_ply >= cutoff_ply);
         }
-
-        println!(
-            "{:?}: pruned {}/{} nodes in {:?}",
-            self,
-            start_count - self.explored_states.len(),
-            start_count,
-            start_time.elapsed(),
-        );
     }
 
     /// Runs MCTS to choose an option.
@@ -124,24 +216,14 @@ impl<'g, 'ctype: 'g, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIE
             num_samples += 1;
 
             // update the live stats display
-            if !QUIET {
-                let now = Instant::now();
-                let elapsed = now.duration_since(last_print_time);
-                if elapsed > Duration::from_millis(100) {
-                    self.show_root_option_stats(game_view, choice);
-                    last_print_time = now;
-                }
+            let now = Instant::now();
+            let elapsed = now.duration_since(last_print_time);
+            if elapsed > Duration::from_millis(100) {
+                self.show_stats(game_view, choice, num_samples, start_time);
+                last_print_time = now;
             }
         }
-        if !QUIET {
-            self.show_root_option_stats(game_view, choice);
-            println!(
-                "{:?}: performed {} samples in {:?}",
-                self,
-                num_samples,
-                start_time.elapsed(),
-            );
-        }
+        self.show_stats(game_view, choice, num_samples, start_time);
 
         // return a random best (maximum visit count) choice
         *get_best_options(self.get_root_option_stats(game_view, choice).1)
@@ -233,8 +315,8 @@ impl<'g, 'ctype: 'g, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIE
     }
 }
 
-impl<'ctype, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIET: bool>
-    PlayerController<'ctype> for MCTSController<'ctype, F, QUIET>
+impl<'ctype, C: PlayerController<'ctype>, F: Fn(Player) -> C> PlayerController<'ctype>
+    for MCTSController<'ctype, F>
 {
     fn choose_option<'g>(
         &mut self,
@@ -245,7 +327,7 @@ impl<'ctype, C: PlayerController<'ctype>, F: Fn(Player) -> C, const QUIET: bool>
     }
 }
 
-impl<F, const QUIET: bool> fmt::Debug for MCTSController<'_, F, QUIET> {
+impl<F> fmt::Debug for MCTSController<'_, F> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "MCTSController[{:?}]", self.player)
     }

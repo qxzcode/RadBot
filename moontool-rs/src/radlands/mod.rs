@@ -559,8 +559,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameViewMut<'g, 'ctype> {
     }
 
     pub fn immediate_future(self) -> ChoiceFuture<'g, 'ctype> {
-        let game_state = self.game_state;
-        ChoiceFuture::immediate(game_state)
+        ChoiceFuture::immediate(self.game_state)
     }
 
     /// Injures all unprotected opponent people.

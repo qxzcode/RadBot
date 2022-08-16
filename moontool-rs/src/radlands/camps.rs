@@ -71,7 +71,6 @@ pub fn get_camp_types() -> Vec<CampType> {
                         .card_locs()
                         .map(|loc| loc.for_player(game_view.player.other()))
                         .collect_vec();
-                    // let damage_future = game_view.other_view_mut().choose_and_damage_card(target_locs);
                     let damage_future = DamageChoice::future(game_view.player.other(), false, target_locs);
                     Ok(damage_future.ignore_result())
                 };

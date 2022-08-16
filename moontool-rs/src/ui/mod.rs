@@ -5,7 +5,10 @@ mod layout;
 use std::{
     collections::VecDeque,
     io, mem, panic,
-    sync::{mpsc, Arc, Mutex},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        mpsc, Arc, Mutex,
+    },
     thread,
     time::Instant,
 };
@@ -81,9 +84,7 @@ pub fn get_user_input() -> String {
     rx.recv().expect("Failed to recv() user input")
 }
 
-lazy_static! {
-    static ref STATS_TX: Mutex<Option<mpsc::Sender<RedrawEvent>>> = Mutex::new(None);
-}
+static STATS_TX: Mutex<Option<mpsc::Sender<RedrawEvent>>> = Mutex::new(None);
 
 // Sets the contents of the stats display for the given player.
 pub fn set_controller_stats(stats: Option<Box<dyn ControllerStats + Send>>, player: Player) {
@@ -94,6 +95,14 @@ pub fn set_controller_stats(stats: Option<Box<dyn ControllerStats + Send>>, play
         .expect("STATS_TX is not initialized")
         .send(RedrawEvent::StatsUpdate(stats, player))
         .expect("Failed to send StatsUpdate");
+}
+
+/// How many times the debug key has been pressed.
+static DEBUG_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+/// Returns how many times the debug key has been pressed.
+pub fn get_debug_counter() -> usize {
+    DEBUG_COUNTER.load(Ordering::Relaxed)
 }
 
 struct HistoryEntry<'ctype> {
@@ -258,6 +267,10 @@ impl AppState {
                 KeyCode::Char('s') => {
                     // shrink the options pane to fit
                     self.options_height = 0;
+                }
+                KeyCode::Char('d') => {
+                    // increment the debug counter
+                    DEBUG_COUNTER.fetch_add(1, Ordering::Relaxed);
                 }
                 KeyCode::Char('q') => {
                     // quit the app
@@ -425,7 +438,11 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut AppState) {
     // render the stats pane
     let p1_stats = app.p1_stats.as_mut().map(|s| (s, Player::Player1));
     let p2_stats = app.p2_stats.as_mut().map(|s| (s, Player::Player2));
-    let stats_info = match app.cur_state.cur_player {
+    let cur_player = match &app.cur_choice {
+        Ok(choice) => choice.chooser(&app.cur_state),
+        Err(_) => app.cur_state.cur_player,
+    };
+    let stats_info = match cur_player {
         Player::Player1 => p1_stats.or(p2_stats),
         Player::Player2 => p2_stats.or(p1_stats),
     };

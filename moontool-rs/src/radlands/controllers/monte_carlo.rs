@@ -94,19 +94,19 @@ impl OptionStats {
     }
 }
 
-pub fn show_option_stats<'g, 'ctype: 'g>(
+pub fn format_option_stats<'g, 'ctype: 'g>(
     option_stats_vec: &[OptionStats],
     parent_rollouts: usize,
     game_view: &GameView<'g, 'ctype>,
     choice: &Choice<'ctype>,
-) {
+) -> Vec<ListItem<'static>> {
     let max_visit_count = option_stats_vec
         .iter()
         .map(|option_stats| option_stats.num_rollouts)
         .max()
         .expect("self.option_stats is empty");
 
-    let lines = option_stats_vec
+    option_stats_vec
         .iter()
         .enumerate()
         .map(|(option_index, option_stats)| {
@@ -129,13 +129,21 @@ pub fn show_option_stats<'g, 'ctype: 'g>(
                 .splice(0..0, [Span::styled(stats, stats_style), "   ".into()]);
             ListItem::new(spans)
         })
-        .collect_vec();
+        .collect()
+}
 
+pub fn show_option_stats<'g, 'ctype: 'g>(
+    option_stats_vec: &[OptionStats],
+    parent_rollouts: usize,
+    game_view: &GameView<'g, 'ctype>,
+    choice: &Choice<'ctype>,
+) {
+    let lines = format_option_stats(option_stats_vec, parent_rollouts, game_view, choice);
     set_controller_stats(Some(Box::new(StatsWidget { lines })), game_view.player);
 }
 
-struct StatsWidget<'a> {
-    lines: Vec<ListItem<'a>>,
+pub struct StatsWidget<'a> {
+    pub lines: Vec<ListItem<'a>>,
 }
 impl ControllerStats for StatsWidget<'_> {
     fn render(&mut self, area: Rect, buf: &mut Buffer) {
