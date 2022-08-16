@@ -362,7 +362,7 @@ pub fn get_person_types() -> Vec<PersonType> {
             }],
             on_enter_play(game_view) => {
                 // when this card enters play, punk
-                game_view.gain_punk()
+                Ok(game_view.gain_punk())
             },
         },
         person_type! {
@@ -471,7 +471,7 @@ pub fn get_person_types() -> Vec<PersonType> {
             abilities: [icon_ability(1, IconEffect::Damage)],
             on_enter_play(game_view) => {
                 // when this card enters play, punk
-                game_view.gain_punk()
+                Ok(game_view.gain_punk())
             },
             special_type: ArgoYesky, // Argo Yesky gives its ability to other people (when uninjured)
         },

@@ -5,9 +5,9 @@ use tui::text::Spans;
 
 use crate::make_spans;
 
-use super::locations::*;
 use super::player_state::Person;
 use super::styles::StyledName;
+use super::{locations::*, PersonOrEventType};
 use super::{Action, GameResult, GameState, IconEffect};
 
 /// A choice between several options that must be made by a player, along with the logic for
@@ -473,13 +473,15 @@ choice_struct! {
     /// Chooses the given person to rescue, updating the game state
     /// and returning the next Choice.
     pub fn choose(&self, game_state, person_loc: PlayLocation) {
-        let player_state = game_state.player_mut(self.chooser);
-
         // remove the person from the board
-        let person = player_state.remove_person_at(person_loc);
+        let person = game_state.player_mut(self.chooser).remove_person_at(person_loc);
 
         // add the card to the player's hand
-        player_state.hand.add_one(person.card_type());
+        let card_type = match person {
+            Person::Punk { .. } => game_state.draw_card()?,
+            Person::NonPunk { person_type, .. } => PersonOrEventType::Person(person_type),
+        };
+        game_state.player_mut(self.chooser).hand.add_one(card_type);
 
         // advance the game state until the next choice
         (self.then)(game_state, ())

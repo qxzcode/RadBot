@@ -669,9 +669,6 @@ pub enum CampStatus {
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum Person<'ctype> {
     Punk {
-        /// The identity of the face-down card.
-        card_type: PersonOrEventType<'ctype>,
-
         /// Whether the punk is ready.
         is_ready: bool,
     },
@@ -696,12 +693,9 @@ pub enum NonPunkStatus {
 }
 
 impl<'ctype> Person<'ctype> {
-    /// Creates a non-ready punk from a card type.
-    pub(super) fn new_punk(card_type: PersonOrEventType<'ctype>) -> Self {
-        Person::Punk {
-            card_type,
-            is_ready: false,
-        }
+    /// Creates a non-ready punk.
+    pub(super) fn new_punk() -> Self {
+        Person::Punk { is_ready: false }
     }
 
     /// Creates a Person from a person type to be played onto the board.
@@ -720,14 +714,6 @@ impl<'ctype> Person<'ctype> {
             } else {
                 NonPunkStatus::NotReady
             },
-        }
-    }
-
-    // Returns the identity of this person's card.
-    pub fn card_type(&self) -> PersonOrEventType<'ctype> {
-        match *self {
-            Person::Punk { card_type, .. } => card_type,
-            Person::NonPunk { person_type, .. } => PersonOrEventType::Person(person_type),
         }
     }
 

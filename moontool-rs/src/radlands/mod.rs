@@ -233,10 +233,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                     .as_mut()
                     .expect("Tried to damage or destroy an empty person slot");
                 let was_destroyed = match person {
-                    Person::Punk { card_type, .. } => {
-                        // return the card to the top of the deck
-                        self.deck.push(*card_type);
-
+                    Person::Punk { .. } => {
                         // destroy the punk
                         *slot = None;
                         true
@@ -622,12 +619,12 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameViewMut<'g, 'ctype> {
 
     /// Has this player add a punk to their board.
     /// Does nothing if the player's board is full.
-    pub fn gain_punk(self) -> Result<ChoiceFuture<'g, 'ctype>, GameResult> {
+    pub fn gain_punk(self) -> ChoiceFuture<'g, 'ctype> {
         if self.my_state().has_empty_person_slot() {
-            let punk = Person::new_punk(self.game_state.draw_card()?);
-            Ok(self.play_person(punk, None))
+            let punk = Person::new_punk();
+            self.play_person(punk, None)
         } else {
-            Ok(self.immediate_future())
+            self.immediate_future()
         }
     }
 
@@ -1096,7 +1093,7 @@ impl IconEffect {
                 game_view.game_state.gain_water();
             }
             IconEffect::GainPunk => {
-                return game_view.gain_punk();
+                return Ok(game_view.gain_punk());
             }
             IconEffect::Raid => {
                 return Ok(game_view.game_state.raid(game_view.player));
