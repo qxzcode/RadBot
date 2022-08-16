@@ -1,5 +1,7 @@
 //! This module contains types representing locations of cards on the board.
 
+use std::fmt;
+
 use rand::distributions::{Distribution, Standard};
 use rand::Rng;
 
@@ -52,6 +54,16 @@ impl From<PersonRowIndex> for CardRowIndex {
     }
 }
 
+impl fmt::Display for CardRowIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_camp() {
+            write!(f, "camp")
+        } else {
+            write!(f, "{}", self.as_usize())
+        }
+    }
+}
+
 /// A column index (0, 1, or 2) on a player's board.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ColumnIndex(u8);
@@ -98,6 +110,13 @@ impl PlayLocation {
     /// Converts the location to a location on the specified player's board.
     pub fn for_player(&self, player: Player) -> CardLocation {
         CardLocation::new(self.column, self.row.into(), player)
+    }
+}
+
+impl fmt::Display for PlayLocation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let loc: PlayerCardLocation = (*self).into();
+        loc.fmt(f)
     }
 }
 
@@ -183,6 +202,18 @@ impl CardLocation {
     }
 }
 
+impl fmt::Display for CardLocation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "<column: {}, row: {}, {:?}>",
+            self.column.as_usize(),
+            self.row,
+            self.player
+        )
+    }
+}
+
 /// A location of a card (camp or person) within a player's board.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PlayerCardLocation {
@@ -218,5 +249,11 @@ impl PlayerCardLocation {
 impl From<PlayLocation> for PlayerCardLocation {
     fn from(play_location: PlayLocation) -> Self {
         PlayerCardLocation::new(play_location.column, play_location.row.into())
+    }
+}
+
+impl fmt::Display for PlayerCardLocation {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<column: {}, row: {}>", self.column.as_usize(), self.row)
     }
 }

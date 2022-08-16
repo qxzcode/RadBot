@@ -129,15 +129,15 @@ impl<'v, 'g: 'v, 'ctype: 'g> Choice<'ctype> {
             Choice::PlayLoc(play_choice) => make_spans!(
                 "Play ",
                 play_choice.person().styled_name(),
-                format!(" at {:?}", play_choice.locations()[option]),
+                format!(" at {}", play_choice.locations()[option]),
             ),
             Choice::Damage(damage_choice) => Spans::from(format!(
-                "{} {:?}",
+                "{} {}",
                 if damage_choice.destroy() { "Destroy" } else { "Damage" },
                 damage_choice.locations()[option],
             )),
             Choice::Restore(restore_choice) => {
-                Spans::from(format!("Restore {:?}", restore_choice.locations()[option]))
+                Spans::from(format!("Restore {}", restore_choice.locations()[option]))
             }
             Choice::IconEffect(icon_effect_choice) => Spans::from({
                 if option == 0 {
@@ -153,11 +153,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Choice<'ctype> {
                 let (location, person) = game_state
                     .player(rescue_person_choice.chooser())
                     .nth_person(option);
-                make_spans!(
-                    "Rescue ",
-                    person.styled_name(),
-                    format!(" at {:?}", location),
-                )
+                make_spans!("Rescue ", person.styled_name(), format!(" at {}", location))
             }
             Choice::MoveEvents(_move_events_choice) => Spans::from(match option {
                 0 => "Don't move events back",
@@ -165,8 +161,8 @@ impl<'v, 'g: 'v, 'ctype: 'g> Choice<'ctype> {
                 _ => panic!("Invalid option for Choice::MoveEvents"),
             }),
             Choice::DamageColumn(damage_column_choice) => Spans::from(format!(
-                "Damage column {:?}",
-                damage_column_choice.columns()[option]
+                "Damage column {}",
+                damage_column_choice.columns()[option].as_usize(),
             )),
         }
     }
