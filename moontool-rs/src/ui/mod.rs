@@ -36,6 +36,7 @@ use crate::radlands::{
     camps::{get_camp_types, CampType},
     choices::Choice,
     controllers::ControllerStats,
+    events::{get_event_types, EventType},
     locations::Player,
     people::{get_person_types, PersonType},
     GameResult, GameState,
@@ -476,8 +477,9 @@ pub(crate) fn main() -> io::Result<()> {
     lazy_static! {
         static ref CAMP_TYPES: Vec<CampType> = get_camp_types();
         static ref PERSON_TYPES: Vec<PersonType> = get_person_types();
+        static ref EVENT_TYPES: Vec<EventType> = get_event_types();
     }
-    let (game_state, choice) = GameState::new(&CAMP_TYPES, &PERSON_TYPES);
+    let (game_state, choice) = GameState::new(&CAMP_TYPES, &PERSON_TYPES, &EVENT_TYPES);
 
     let mut app = AppState {
         frame_num: 0,

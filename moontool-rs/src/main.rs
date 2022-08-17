@@ -3,6 +3,7 @@ mod radlands;
 mod ui;
 
 use clap::Parser;
+use radlands::events::EventType;
 use std::time::Duration;
 
 use radlands::camps::CampType;
@@ -61,6 +62,7 @@ fn main() {
 
     let camp_types = camps::get_camp_types();
     let person_types = people::get_person_types();
+    let event_types = events::get_event_types();
 
     if args.ui {
         ui::main().expect("UI error");
@@ -68,14 +70,19 @@ fn main() {
         let num_games = 100_000;
         println!("Running {} random games...", num_games);
         for _ in 0..num_games {
-            do_game(&camp_types, &person_types, &args);
+            do_game(&camp_types, &person_types, &event_types, &args);
         }
     } else {
-        do_game(&camp_types, &person_types, &args);
+        do_game(&camp_types, &person_types, &event_types, &args);
     }
 }
 
-fn do_game(camp_types: &[CampType], person_types: &[PersonType], args: &Args) {
+fn do_game(
+    camp_types: &[CampType],
+    person_types: &[PersonType],
+    event_types: &[EventType],
+    args: &Args,
+) {
     let mut p1: Box<dyn PlayerController>;
     let mut p2: Box<dyn PlayerController>;
     if args.random {
@@ -95,7 +102,7 @@ fn do_game(camp_types: &[CampType], person_types: &[PersonType], args: &Args) {
         p2 = Box::new(HumanController);
     }
 
-    let (mut game_state, choice) = GameState::new(camp_types, person_types);
+    let (mut game_state, choice) = GameState::new(camp_types, person_types, event_types);
 
     let result = play_to_end(&mut game_state, choice, p1.as_mut(), p2.as_mut());
 

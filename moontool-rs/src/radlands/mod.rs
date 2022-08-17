@@ -2,6 +2,7 @@ pub mod abilities;
 pub mod camps;
 pub mod choices;
 pub mod controllers;
+pub mod events;
 pub mod locations;
 pub mod observed_state;
 pub mod people;
@@ -13,7 +14,6 @@ use itertools::Itertools;
 use rand::seq::SliceRandom;
 use rand::{thread_rng, Rng};
 use std::cmp::Ordering;
-use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::mem;
 use tui::text::{Span, Spans};
@@ -25,6 +25,7 @@ use self::abilities::Ability;
 use self::camps::CampType;
 use self::choices::{Choice, ChoiceFuture, DamageChoice, PlayChoice, RestoreChoice};
 use self::controllers::PlayerController;
+use self::events::EventType;
 use self::locations::*;
 use self::people::{PersonType, SpecialType};
 use self::player_state::*;
@@ -67,12 +68,18 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
     pub fn new(
         camp_types: &'ctype [CampType],
         person_types: &'ctype [PersonType],
+        event_types: &'ctype [EventType],
     ) -> (Self, Choice<'ctype>) {
         // populate the deck and shuffle it
         let mut deck = Vec::new();
         for person_type in person_types {
             for _ in 0..person_type.num_in_deck {
                 deck.push(PersonOrEventType::Person(person_type));
+            }
+        }
+        for event_type in event_types {
+            for _ in 0..event_type.num_in_deck {
+                deck.push(PersonOrEventType::Event(event_type));
             }
         }
         deck.shuffle(&mut thread_rng());
@@ -149,7 +156,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
     /// Resolves the current player's first event (if any), then advances any other events.
     /// Returns a future that may represent choices from the event resolution.
-    fn advance_cur_events(&'g mut self) -> ChoiceFuture<'g, 'ctype> {
+    fn advance_cur_events(&'g mut self) -> Result<ChoiceFuture<'g, 'ctype>, GameResult> {
         let mut view = self.view_for_cur_mut();
 
         // take the first event (if any)
@@ -161,16 +168,16 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         // resolve the first event (if any)
         if let Some(event) = first_event {
             // discard it if it's not Raiders
-            if event.as_raiders().is_none() {
+            if event != &RAIDERS_EVENT {
                 view.game_state
                     .discard
                     .push(PersonOrEventType::Event(event));
             }
 
             // resolve the event
-            event.resolve(&mut self.view_for_cur_mut())
+            (event.on_resolve)(self.view_for_cur_mut())
         } else {
-            ChoiceFuture::immediate(self)
+            Ok(ChoiceFuture::immediate(self))
         }
     }
 
@@ -189,7 +196,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         self.cur_player = self.cur_player.other();
 
         // resolve/advance events
-        self.advance_cur_events().then(move |game_state, _| {
+        self.advance_cur_events()?.then(move |game_state, _| {
             let mut view = game_state.view_for_cur_mut();
 
             // replenish water
@@ -367,12 +374,13 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
         let my_state = self.player_mut(player);
         for i in 0..my_state.events.len() {
             if let Some(event) = my_state.events[i] {
-                if let Some(raiders) = event.as_raiders() {
+                if event == &RAIDERS_EVENT {
                     // found the raiders event
                     if i == 0 {
                         // it's the first event, so remove and resolve it
                         my_state.events[0] = None;
-                        return raiders.resolve(&mut self.view_for_mut(player));
+                        return (event.on_resolve)(self.view_for_mut(player))
+                            .expect("Resolving Raiders shouldn't *immediately* end the game");
                     } else {
                         // it's not the first event, so advance it if possible
                         let events = &mut my_state.events;
@@ -387,7 +395,9 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
         // if we get here, the raiders event was not found in the event queue;
         // add it to the queue
-        self.view_for_mut(player).play_event(&RaidersEvent)
+        self.view_for_mut(player)
+            .play_event(&RAIDERS_EVENT)
+            .expect("Playing Raiders shouldn't *immediately* end the game")
     }
 }
 
@@ -543,7 +553,7 @@ macro_rules! impl_game_view_common {
                 // search for the Raiders event in the event queue
                 let events = self.my_state().events;
                 for i in 0..events.len() {
-                    if matches!(events[i], Some(event) if event.as_raiders().is_some()) {
+                    if matches!(events[i], Some(event) if event == &RAIDERS_EVENT) {
                         // found the raiders event
                         if i == 0 {
                             // it's the first event, so the raid effect would resolve it
@@ -558,7 +568,7 @@ macro_rules! impl_game_view_common {
 
                 // if we get here, the raiders event was not found in the event queue;
                 // the raid effect can only be used if there is a free event slot for it
-                self.can_play_event(RaidersEvent.resolve_turns())
+                self.can_play_event(RAIDERS_EVENT.resolve_turns)
             }
 
             /// Returns whether this player can play an event that resolves in the given number of turns.
@@ -671,11 +681,14 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameViewMut<'g, 'ctype> {
     /// Plays an event into this player's event queue (or resolves it immediately
     /// if it's a 0-turn event).
     /// Panics if there is not a free slot for the event.
-    fn play_event(mut self, event: &'ctype dyn EventType) -> ChoiceFuture<'g, 'ctype> {
-        let resolve_turns = self.effective_resolve_turns(event.resolve_turns());
+    fn play_event(
+        mut self,
+        event: &'ctype EventType,
+    ) -> Result<ChoiceFuture<'g, 'ctype>, GameResult> {
+        let resolve_turns = self.effective_resolve_turns(event.resolve_turns);
         self.game_state.has_played_event = true;
         if resolve_turns == 0 {
-            event.resolve(&mut self)
+            (event.on_resolve)(self)
         } else {
             let slot_index = (resolve_turns - 1) as usize;
             let free_slot = self.my_state_mut().events[slot_index..]
@@ -684,7 +697,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameViewMut<'g, 'ctype> {
                 .expect("Tried to play an event, but there was no free slot");
             *free_slot = Some(event);
 
-            self.immediate_future()
+            Ok(self.immediate_future())
         }
     }
 
@@ -750,7 +763,7 @@ pub enum Action<'ctype> {
     PlayHoldout(&'ctype PersonType),
 
     /// Play an event card from the hand onto the event queue.
-    PlayEvent(&'ctype dyn EventType),
+    PlayEvent(&'ctype EventType),
 
     /// Draw a card (costs 2 water).
     DrawCard,
@@ -814,7 +827,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
             }
             Action::PlayEvent(event_type) => {
                 // pay the event's cost and remove it from the player's hand
-                game_view.game_state.spend_water(event_type.cost());
+                game_view.game_state.spend_water(event_type.cost);
                 game_view
                     .my_state_mut()
                     .hand
@@ -822,7 +835,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
 
                 // play the event
                 game_view
-                    .play_event(event_type)
+                    .play_event(event_type)?
                     .then(|game_state, _| Ok(Choice::new_actions(game_state)))
             }
             Action::DrawCard => {
@@ -924,7 +937,14 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
             Action::PlayEvent(card) => make_spans!(
                 "Play ",
                 card.styled_name(),
-                WATER_COST: card.cost(),
+                " (resolves ",
+                match game_view.effective_resolve_turns(card.resolve_turns) {
+                    0 => "immediately".into(),
+                    1 => "in 1 turn".into(),
+                    resolve_turns => format!("in {resolve_turns} turns"),
+                },
+                ")",
+                WATER_COST: card.cost,
             ),
             Action::DrawCard => make_spans!(
                 "Draw a card",
@@ -962,7 +982,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Action<'ctype> {
 #[derive(Clone, Copy, Debug)]
 pub enum PersonOrEventType<'ctype> {
     Person(&'ctype PersonType),
-    Event(&'ctype dyn EventType),
+    Event(&'ctype EventType),
 }
 
 impl PersonOrEventType<'_> {
@@ -970,7 +990,7 @@ impl PersonOrEventType<'_> {
     pub fn junk_effect(&self) -> IconEffect {
         match self {
             PersonOrEventType::Person(person_type) => person_type.junk_effect,
-            PersonOrEventType::Event(event_type) => event_type.junk_effect(),
+            PersonOrEventType::Event(event_type) => event_type.junk_effect,
         }
     }
 
@@ -978,7 +998,7 @@ impl PersonOrEventType<'_> {
     pub fn cost(&self) -> u32 {
         match self {
             PersonOrEventType::Person(person_type) => person_type.cost,
-            PersonOrEventType::Event(event_type) => event_type.cost(),
+            PersonOrEventType::Event(event_type) => event_type.cost,
         }
     }
 }
@@ -1038,70 +1058,13 @@ impl PartialOrd for PersonOrEventType<'_> {
     }
 }
 
-/// Trait for a type of event card.
-pub trait EventType: fmt::Debug + Sync {
-    /// Returns the event's name.
-    fn name(&self) -> &'static str;
-
-    /// Returns how many of this event type are in the deck.
-    fn num_in_deck(&self) -> u32;
-
-    /// Returns the event's junk effect.
-    fn junk_effect(&self) -> IconEffect;
-
-    /// Returns the water cost to play this event.
-    fn cost(&self) -> u32;
-
-    /// Returns the number of turns before the event resolves after being played.
-    fn resolve_turns(&self) -> u8;
-
-    /// Resolves the event. Takes a view from the perspective of this event's owner.
-    /// Returns a ChoiceFuture for the event's resolution.
-    fn resolve<'v, 'g: 'v, 'ctype: 'g>(
-        &'ctype self,
-        game_view: &'v mut GameViewMut<'g, 'ctype>,
-    ) -> ChoiceFuture<'g, 'ctype>;
-
-    /// Returns this event if it is the Raiders event, otherwise None.
-    fn as_raiders(&self) -> Option<&RaidersEvent> {
-        None
-    }
-}
-
-impl<T: EventType + ?Sized> StyledName for T {
-    /// Returns this event's name, styled for display.
-    fn styled_name(&self) -> Span<'static> {
-        Span::styled(self.name(), *EVENT)
-    }
-}
-
-pub struct RaidersEvent;
-
-impl EventType for RaidersEvent {
-    fn name(&self) -> &'static str {
-        "Raiders"
-    }
-
-    fn num_in_deck(&self) -> u32 {
-        1
-    }
-
-    fn junk_effect(&self) -> IconEffect {
-        panic!("Raiders can never be junked");
-    }
-
-    fn cost(&self) -> u32 {
-        panic!("Raiders does not have a water cost");
-    }
-
-    fn resolve_turns(&self) -> u8 {
-        2
-    }
-
-    fn resolve<'v, 'g: 'v, 'ctype: 'g>(
-        &'ctype self,
-        game_view: &'v mut GameViewMut<'g, 'ctype>,
-    ) -> ChoiceFuture<'g, 'ctype> {
+static RAIDERS_EVENT: EventType = EventType {
+    name: "Raiders",
+    num_in_deck: 0,                // Raiders is not a normal card in the deck
+    junk_effect: IconEffect::Raid, // arbitrary; should never be junked
+    cost: 0,                       // arbitrary; should never be paid for
+    resolve_turns: 2,
+    on_resolve: |game_view| {
         // have the other player choose one of their (non-destroyed) camps to damage
         let target_locs = game_view
             .other_state()
@@ -1116,19 +1079,9 @@ impl EventType for RaidersEvent {
             .collect_vec();
 
         // have the other player choose one of their (non-destroyed) camps to damage
-        DamageChoice::future(game_view.player.other(), false, target_locs).ignore_result()
-    }
-
-    fn as_raiders(&self) -> Option<&RaidersEvent> {
-        Some(self)
-    }
-}
-
-impl fmt::Debug for RaidersEvent {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "EventType[Raiders]")
-    }
-}
+        Ok(DamageChoice::future(game_view.player.other(), false, target_locs).ignore_result())
+    },
+};
 
 /// Enum representing basic icon effects for abilities and junk effects.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

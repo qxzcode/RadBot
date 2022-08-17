@@ -18,7 +18,7 @@ pub struct PlayerState<'ctype> {
     pub columns: [CardColumn<'ctype>; 3],
 
     /// The three event slots of the player's board.
-    pub events: [Option<&'ctype (dyn EventType + 'ctype)>; 3],
+    pub events: [Option<&'ctype EventType>; 3],
 }
 
 impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
@@ -288,7 +288,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
                 }
                 PersonOrEventType::Event(event_type) => {
                     // PlayEvent actions
-                    if can_afford && game_view.can_play_event(event_type.resolve_turns()) {
+                    if can_afford && game_view.can_play_event(event_type.resolve_turns) {
                         actions.push(Action::PlayEvent(event_type));
                     }
                 }
