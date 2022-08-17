@@ -18,6 +18,7 @@ use std::hash::{Hash, Hasher};
 use std::mem;
 use tui::text::{Span, Spans};
 
+use crate::cards::Cards;
 use crate::make_spans;
 
 use self::abilities::Ability;
@@ -54,6 +55,9 @@ pub struct GameState<'ctype> {
     /// ability this turn.
     has_paid_to_draw: bool,
 
+    /// Whether the current player has played an event this turn.
+    has_played_event: bool,
+
     /// Whether the the deck has been reshuffled from the discard pile in this game.
     has_reshuffled_deck: bool,
 }
@@ -88,6 +92,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
             cur_player: thread_rng().gen(), // randomly pick which player goes first
             cur_player_water: 1,            // the first player gets 1 water for the first turn
             has_paid_to_draw: false,
+            has_played_event: false,
             has_reshuffled_deck: false,
         };
 
@@ -196,6 +201,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
 
             // reset other turn state
             view.game_state.has_paid_to_draw = false;
+            view.game_state.has_played_event = false;
 
             // draw a card
             view.draw_card_into_hand()?;
@@ -530,6 +536,58 @@ macro_rules! impl_game_view_common {
             ) -> ChoiceFuture<'g, 'ctype, CardLocation> {
                 DamageChoice::future(self.player, true, locs)
             }
+
+            /// Returns whether this player can use the raid effect to play or advance
+            /// their Raiders event.
+            pub fn can_raid(&self) -> bool {
+                // search for the Raiders event in the event queue
+                let events = self.my_state().events;
+                for i in 0..events.len() {
+                    if matches!(events[i], Some(event) if event.as_raiders().is_some()) {
+                        // found the raiders event
+                        if i == 0 {
+                            // it's the first event, so the raid effect would resolve it
+                            return true;
+                        } else {
+                            // it's not the first event; the raid effect can only advance it if
+                            // there is not an event directly in front of it
+                            return events[i - 1].is_none();
+                        }
+                    }
+                }
+
+                // if we get here, the raiders event was not found in the event queue;
+                // the raid effect can only be used if there is a free event slot for it
+                self.can_play_event(RaidersEvent.resolve_turns())
+            }
+
+            /// Returns whether this player can play an event that resolves in the given number of turns.
+            pub fn can_play_event(&self, resolve_turns: u8) -> bool {
+                let resolve_turns = self.effective_resolve_turns(resolve_turns);
+                if resolve_turns == 0 {
+                    // immediately-resolving events are always allowed
+                    true
+                } else {
+                    // other events can only be played if there is a free event slot on or after
+                    // their initial slot
+                    let initial_slot = resolve_turns - 1;
+                    self.my_state()
+                        .events[initial_slot as usize..]
+                        .iter().any(|slot| slot.is_none())
+                }
+            }
+
+            /// Given the "normal" resolve timer for an event, returns the *actual* resolve timer
+            /// for the event if played now, taking into account other card effects.
+            pub fn effective_resolve_turns(&self, resolve_turns: u8) -> u8 {
+                if !self.game_state.has_played_event
+                    && self.my_state().has_special_person(SpecialType::ZetoKhan)
+                {
+                    0  // Zeto Khan's trait: the first event played this turn resolves in 0
+                } else {
+                    resolve_turns
+                }
+            }
         }
     };
 }
@@ -594,20 +652,32 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameViewMut<'g, 'ctype> {
     }
 
     /// Draws a card from the deck and puts it in this player's hand.
-    pub fn draw_card_into_hand(&'v mut self) -> Result<(), GameResult> {
+    /// Returns the type of the drawn card.
+    pub fn draw_card_into_hand(&'v mut self) -> Result<PersonOrEventType<'ctype>, GameResult> {
         let card = self.game_state.draw_card()?;
         self.my_state_mut().hand.add_one(card);
-        Ok(())
+        Ok(card)
+    }
+
+    /// Draws `n` cards from the deck and puts them in this player's hand.
+    /// Returns the types of the drawn cards.
+    pub fn draw_cards_into_hand(
+        &'v mut self,
+        n: usize,
+    ) -> Result<Cards<PersonOrEventType<'ctype>>, GameResult> {
+        (0..n).map(|_| self.draw_card_into_hand()).collect()
     }
 
     /// Plays an event into this player's event queue (or resolves it immediately
     /// if it's a 0-turn event).
     /// Panics if there is not a free slot for the event.
     fn play_event(mut self, event: &'ctype dyn EventType) -> ChoiceFuture<'g, 'ctype> {
-        if event.resolve_turns() == 0 {
+        let resolve_turns = self.effective_resolve_turns(event.resolve_turns());
+        self.game_state.has_played_event = true;
+        if resolve_turns == 0 {
             event.resolve(&mut self)
         } else {
-            let slot_index = (event.resolve_turns() - 1) as usize;
+            let slot_index = (resolve_turns - 1) as usize;
             let free_slot = self.my_state_mut().events[slot_index..]
                 .iter_mut()
                 .find(|slot| slot.is_none())
@@ -1082,7 +1152,7 @@ impl IconEffect {
             IconEffect::Draw => true, // it's always possible to draw a card
             IconEffect::Water => true, // it's always possible to gain water
             IconEffect::GainPunk => game_view.my_state().has_empty_person_slot(),
-            IconEffect::Raid => game_view.my_state().can_raid(),
+            IconEffect::Raid => game_view.can_raid(),
         }
     }
 

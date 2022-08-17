@@ -57,6 +57,7 @@ pub struct ObservedStateFull<'ctype> {
     cur_player_water: u32,
     other_player_has_water_silo: bool,
     has_paid_to_draw: bool,
+    has_played_event: bool,
     has_reshuffled_deck: bool,
     // TODO: Does this struct need to include the current choice too?
     // I think it just needs to uniquely identify nodes in the game search tree.
@@ -88,6 +89,7 @@ impl<'ctype> ObservedStateFull<'ctype> {
                 .player(game_state.cur_player.other())
                 .has_water_silo,
             has_paid_to_draw: game_state.has_paid_to_draw,
+            has_played_event: game_state.has_played_event,
             has_reshuffled_deck: game_state.has_reshuffled_deck,
             choice_type: std::mem::discriminant(choice),
             num_options: choice.num_options(game_state),

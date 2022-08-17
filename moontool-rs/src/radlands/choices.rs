@@ -3,6 +3,7 @@ use std::sync::Arc;
 use itertools::Itertools;
 use tui::text::Spans;
 
+use crate::cards::Cards;
 use crate::make_spans;
 
 use super::player_state::Person;
@@ -23,6 +24,7 @@ pub enum Choice<'ctype> {
     RescuePerson(RescuePersonChoice<'ctype>), // only used for Rescue Team's ability
     MoveEvents(MoveEventsChoice<'ctype>),     // only used for Doomsayer's on-enter-play effect
     DamageColumn(DamageColumnChoice<'ctype>), // only used for Magnus Karv's ability
+    Discard(DiscardChoice<'ctype>),
 }
 
 impl<'v, 'g: 'v, 'ctype: 'g> Choice<'ctype> {
@@ -47,6 +49,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Choice<'ctype> {
                 .count(),
             Choice::MoveEvents(_move_events_choice) => 2,
             Choice::DamageColumn(damage_column_choice) => damage_column_choice.columns().len(),
+            Choice::Discard(discard_choice) => discard_choice.cards().len(),
         }
     }
 
@@ -61,6 +64,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> Choice<'ctype> {
             Choice::RescuePerson(rescue_person_choice) => rescue_person_choice.chooser(),
             Choice::MoveEvents(move_events_choice) => move_events_choice.chooser(),
             Choice::DamageColumn(damage_column_choice) => damage_column_choice.chooser(),
+            Choice::Discard(discard_choice) => discard_choice.chooser(),
         }
     }
 
@@ -110,6 +114,9 @@ impl<'v, 'g: 'v, 'ctype: 'g> Choice<'ctype> {
             ),
             Choice::DamageColumn(damage_column_choice) => {
                 damage_column_choice.choose(game_state, damage_column_choice.columns()[option])
+            }
+            Choice::Discard(discard_choice) => {
+                discard_choice.choose(game_state, discard_choice.cards()[option])
             }
         }
     }
@@ -164,6 +171,9 @@ impl<'v, 'g: 'v, 'ctype: 'g> Choice<'ctype> {
                 "Damage column {}",
                 damage_column_choice.columns()[option].as_usize(),
             )),
+            Choice::Discard(discard_choice) => {
+                make_spans!("Discard ", discard_choice.cards()[option].styled_name())
+            }
         }
     }
 }
@@ -529,5 +539,66 @@ choice_struct! {
 
         // advance the game state until the next choice
         (self.then)(game_state, ())
+    }
+}
+
+choice_struct! {
+    /// asks the player to discard a card from (a subset of) their hand
+    Discard:
+    pub struct DiscardChoice => PersonOrEventType<'ctype> {
+        /// The card types from the player's hand that are allowed to be discarded.
+        cards: (Vec<PersonOrEventType<'ctype>>),
+    }
+
+    /// Chooses the given card to discard, updating the game state and returning the next Choice.
+    pub fn choose(&self, game_state, card: PersonOrEventType<'ctype>) {
+        // discard the card
+        game_state.player_mut(self.chooser).hand.remove_one(card);
+        game_state.discard.push(card);
+
+        // advance the game state until the next choice
+        (self.then)(game_state, card)
+    }
+}
+
+impl DiscardChoice<'_> {
+    /// Creates a new future that asks the player to discard `n` cards, one at a time,
+    /// before resolving.
+    ///
+    /// If `cards` is `Some(...)`, the player can only discard out of that subset of their hand.
+    ///
+    /// Panics if `n` is 0 or is greater than the number of cards available to discard.
+    pub fn discard_n_future<'g, 'ctype: 'g>(
+        game_state: &'g GameState<'ctype>,
+        chooser: Player,
+        subset: Option<Cards<PersonOrEventType<'ctype>>>,
+        n: usize,
+    ) -> ChoiceFuture<'g, 'ctype, ()> {
+        let cards = subset.as_ref().unwrap_or(&game_state.player(chooser).hand);
+
+        assert!(n > 0);
+        assert!(cards.count() >= n); // assert that there are enough cards to discard
+
+        let future = DiscardChoice::future(chooser, cards.iter_unique().collect());
+        if n == 1 {
+            future.ignore_result() // no further choices to make after this discard
+        } else {
+            // discard the remaining after this discard
+            future.then_future_chain(move |game_state, discarded_card| {
+                // make a copy of the original subset (if given), minus the card that was just discarded
+                let mut subset = subset.clone();
+                if let Some(subset) = &mut subset {
+                    subset.remove_one(discarded_card);
+                }
+
+                // "recurse" to discard n-1 cards from the remaining subset
+                Ok(DiscardChoice::discard_n_future(
+                    game_state,
+                    chooser,
+                    subset,
+                    n - 1,
+                ))
+            })
+        }
     }
 }

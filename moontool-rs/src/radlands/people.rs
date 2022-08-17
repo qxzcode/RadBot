@@ -493,7 +493,22 @@ pub fn get_person_types() -> Vec<PersonType> {
                 };
             }],
         },
-        // TODO: Zeto Khan
+        person_type! {
+            name: "Zeto Khan",
+            num_in_deck: 1,
+            junk_effect: IconEffect::GainPunk,
+            cost: 3,
+            abilities: [ability! {
+                description => "Draw 3, then discard 3";
+                cost => 1;
+                can_perform => true;
+                perform(mut game_view) => {
+                    game_view.draw_cards_into_hand(3)?;
+                    Ok(DiscardChoice::discard_n_future(game_view.game_state, game_view.player, None, 3))
+                };
+            }],
+            special_type: ZetoKhan, // Trait: the first event you play each turn resolves instantly
+        },
         person_type! {
             name: "Karli Blaze",
             num_in_deck: 1,

@@ -70,44 +70,6 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
         self.column_mut(loc.column()).person_slot_mut(loc.row())
     }
 
-    /// Returns whether this player can use the raid effect to play or advance
-    /// their Raiders event.
-    pub fn can_raid(&self) -> bool {
-        // search for the Raiders event in the event queue
-        for i in 0..self.events.len() {
-            if matches!(self.events[i], Some(event) if event.as_raiders().is_some()) {
-                // found the raiders event
-                if i == 0 {
-                    // it's the first event, so the raid effect would resolve it
-                    return true;
-                } else {
-                    // it's not the first event; the raid effect can only advance it if there is
-                    // not an event directly in front of it
-                    return self.events[i - 1].is_none();
-                }
-            }
-        }
-
-        // if we get here, the raiders event was not found in the event queue;
-        // the raid effect can only be used if there is a free event slot for it
-        self.can_play_event(RaidersEvent.resolve_turns())
-    }
-
-    /// Returns whether this player can play an event that resolves in the given number of turns.
-    pub fn can_play_event(&self, resolve_turns: u8) -> bool {
-        if resolve_turns == 0 {
-            // immediately-resolving events are always allowed
-            true
-        } else {
-            // other events can only be played if there is a free event slot on or after their
-            // initial slot
-            let initial_slot = resolve_turns - 1;
-            self.events[initial_slot as usize..]
-                .iter()
-                .any(|slot| slot.is_none())
-        }
-    }
-
     /// Returns whether this player has at least one event in their queue.
     pub fn has_event(&self) -> bool {
         self.events.iter().any(|slot| slot.is_some())
@@ -326,7 +288,7 @@ impl<'v, 'g: 'v, 'ctype: 'g> PlayerState<'ctype> {
                 }
                 PersonOrEventType::Event(event_type) => {
                     // PlayEvent actions
-                    if can_afford && self.can_play_event(event_type.resolve_turns()) {
+                    if can_afford && game_view.can_play_event(event_type.resolve_turns()) {
                         actions.push(Action::PlayEvent(event_type));
                     }
                 }
