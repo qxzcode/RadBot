@@ -324,7 +324,7 @@ pub fn get_person_types() -> Vec<PersonType> {
         person_type! {
             name: "Vigilante",
             num_in_deck: 2,
-            junk_effect: IconEffect::Injure,
+            junk_effect: IconEffect::Raid,
             cost: 1,
             abilities: [icon_ability(1, IconEffect::Injure)],
         },
