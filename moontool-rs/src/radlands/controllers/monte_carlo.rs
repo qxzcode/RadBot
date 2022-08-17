@@ -110,10 +110,13 @@ pub fn format_option_stats<'g, 'ctype: 'g>(
         .iter()
         .enumerate()
         .map(|(option_index, option_stats)| {
+            let bar_width = (option_stats.num_rollouts as f64) / (parent_rollouts as f64) * 10.0;
+            let bar_width = bar_width.round() as usize;
             let stats = format!(
-                "{:8}  {:6.2}%  {:6.2}%",
+                "{:8}  {}{}  {:6.2}%",
                 option_stats.num_rollouts,
-                (option_stats.num_rollouts as f64) / (parent_rollouts as f64) * 100.0,
+                ".".repeat(10 - bar_width),
+                "#".repeat(bar_width),
                 option_stats.win_rate() * 100.0,
             );
             let stats_style = if option_stats.num_rollouts == max_visit_count {

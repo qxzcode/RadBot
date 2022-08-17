@@ -101,8 +101,8 @@ impl<'g, 'ctype: 'g, C: PlayerController<'ctype>, F: Fn(Player) -> C> MCTSContro
             format!("Nodes in cache: {}", self.explored_states.len()),
             " ".into(), // creates a blank line
             title.into(),
-            "# Visits  Visit %   Win %    Option".into(),
-            "--------  -------  -------   ------".into(),
+            "# Visits    Visit %    Win %    Option".into(),
+            "--------  ----------  -------   ------".into(),
         ];
         lines.splice(0..0, top_lines.into_iter().map(ListItem::new));
 
@@ -148,7 +148,7 @@ impl<'g, 'ctype: 'g, C: PlayerController<'ctype>, F: Fn(Player) -> C> MCTSContro
                         i,
                         Some((
                             opt.num_rollouts,
-                            (opt.num_rollouts as f64) / (root_count.unwrap() as f64) * 100.0,
+                            (opt.num_rollouts as f64) / (root_count.unwrap() as f64),
                             opt.win_rate() * 100.0,
                         )),
                     )
@@ -162,10 +162,15 @@ impl<'g, 'ctype: 'g, C: PlayerController<'ctype>, F: Fn(Player) -> C> MCTSContro
                 let mut spans = choice.format_option(option_index, &game_state);
                 spans.0.splice(
                     0..0,
-                    [if let Some((count, percent, win_rate)) = stats {
-                        format!("{count:8}  {percent:6.2}%  {win_rate:6.2}%   ")
+                    [if let Some((count, visit_proportion, win_rate)) = stats {
+                        let bar_width = (visit_proportion * 10.0).round() as usize;
+                        format!(
+                            "{count:8}  {}{}  {win_rate:6.2}%   ",
+                            ".".repeat(10 - bar_width),
+                            "#".repeat(bar_width),
+                        )
                     } else {
-                        " ".repeat(8 + (2 + 6 + 1) * 2 + 3)
+                        " ".repeat(8 + (2 + 10) + (2 + 6 + 1) + 3)
                     }
                     .into()],
                 );
