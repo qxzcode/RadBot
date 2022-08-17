@@ -2,6 +2,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 
 use by_address::ByAddress;
+use itertools::Itertools;
 use tui::text::Span;
 
 use super::choices::*;
@@ -60,15 +61,41 @@ impl StyledName for EventType {
 }
 
 pub fn get_event_types() -> Vec<EventType> {
-    vec![EventType {
-        name: "Strafe",
-        num_in_deck: 2,
-        junk_effect: IconEffect::Draw,
-        cost: 2,
-        resolve_turns: 0,
-        on_resolve: |mut game_view| {
-            game_view.injure_all_unprotected_enemies();
-            Ok(ChoiceFuture::immediate(game_view.game_state))
+    vec![
+        EventType {
+            name: "Strafe",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Draw,
+            cost: 2,
+            resolve_turns: 0,
+            // Injure all unprotected enemies
+            on_resolve: |mut game_view| {
+                game_view.injure_all_unprotected_enemies();
+                Ok(ChoiceFuture::immediate(game_view.game_state))
+            },
         },
-    }]
+        EventType {
+            name: "Napalm",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Restore,
+            cost: 2,
+            resolve_turns: 1,
+            // Destroy all enemies in one column
+            on_resolve: |game_view| {
+                let cols_with_people = game_view
+                    .other_state()
+                    .enumerate_columns()
+                    .filter(|(_, col)| col.people().next().is_some())
+                    .map(|(col_idx, _)| col_idx)
+                    .collect_vec();
+                let future = if cols_with_people.is_empty() {
+                    // no opponent columns have people, so resolving this event is a no-op
+                    ChoiceFuture::immediate(game_view.game_state)
+                } else {
+                    DamageColumnChoice::future(game_view.player, true, true, cols_with_people)
+                };
+                Ok(future)
+            },
+        },
+    ]
 }

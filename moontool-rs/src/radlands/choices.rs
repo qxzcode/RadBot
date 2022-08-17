@@ -168,7 +168,9 @@ impl<'v, 'g: 'v, 'ctype: 'g> Choice<'ctype> {
                 _ => panic!("Invalid option for Choice::MoveEvents"),
             }),
             Choice::DamageColumn(damage_column_choice) => Spans::from(format!(
-                "Damage column {}",
+                "{}{} column {}",
+                if damage_column_choice.destroy() { "Destroy" } else { "Damage" },
+                if damage_column_choice.people_only() { " people in" } else { "" },
                 damage_column_choice.columns()[option].as_usize(),
             )),
             Choice::Discard(discard_choice) => {
@@ -519,23 +521,34 @@ choice_struct! {
 }
 
 choice_struct! {
-    /// asks the player to damage an opponent column
+    /// asks the player to damage/destroy cards in an opponent column
     DamageColumn:
     pub struct DamageColumnChoice => () {
+        /// Whether to destroy the cards (versus just damaging them).
+        destroy: (bool),
+        /// Whether to only affect people in the column.
+        people_only: (bool),
         /// The columns that can be damaged.
         columns: (Vec<ColumnIndex>),
     }
 
     /// Chooses the given column to damage, updating the game state and returning the next Choice.
     pub fn choose(&self, game_state, column: ColumnIndex) {
-        // damage all cards in the column
-        let target_locs = game_state
-            .player(self.chooser.other())
-            .column(column)
-            .card_rows()
-            .map(|row| CardLocation::new(column, row, self.chooser.other()))
-            .collect_vec();
-        game_state.damage_cards_at(target_locs, false)?;
+        let column_ref = game_state.player(self.chooser.other()).column(column);
+        let target_locs = if self.people_only {
+            // target only the people (if any) in the column
+            column_ref
+                .enumerate_people()
+                .map(|(row, _)| CardLocation::new(column, row.into(), self.chooser.other()))
+                .collect_vec()
+        } else {
+            // target all cards in the column
+            column_ref
+                .card_rows()
+                .map(|row| CardLocation::new(column, row, self.chooser.other()))
+                .collect_vec()
+        };
+        game_state.damage_cards_at(target_locs, self.destroy)?;
 
         // advance the game state until the next choice
         (self.then)(game_state, ())

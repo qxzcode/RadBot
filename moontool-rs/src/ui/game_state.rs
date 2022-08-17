@@ -199,7 +199,9 @@ impl GameStateWidget<'_, '_, '_> {
             }
             Some(Choice::DamageColumn(choice)) if player == choice.chooser().other() => {
                 for (i, col) in choice.columns().iter().enumerate().rev() {
-                    tag_location(CardRowIndex::camp(), *col, i);
+                    if !choice.people_only() {
+                        tag_location(CardRowIndex::camp(), *col, i);
+                    }
                     for (row, _) in self
                         .game_state
                         .player(player)

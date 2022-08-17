@@ -489,7 +489,7 @@ pub fn get_person_types() -> Vec<PersonType> {
                         .filter(|(_, col)| !col.is_empty())
                         .map(|(col_idx, _)| col_idx)
                         .collect_vec();
-                    Ok(DamageColumnChoice::future(game_view.player, non_empty_cols))
+                    Ok(DamageColumnChoice::future(game_view.player, false, false, non_empty_cols))
                 };
             }],
         },
