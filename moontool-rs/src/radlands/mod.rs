@@ -617,6 +617,10 @@ impl<'v, 'g: 'v, 'ctype: 'g> GameViewMut<'g, 'ctype> {
         self.game_state.player_mut(self.player)
     }
 
+    pub fn other_state_mut(&mut self) -> &mut PlayerState<'ctype> {
+        self.game_state.player_mut(self.player.other())
+    }
+
     pub fn other_view_mut(&'v mut self) -> GameView<'v, 'ctype> {
         GameView {
             game_state: self.game_state,

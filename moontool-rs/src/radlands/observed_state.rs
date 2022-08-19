@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::cards::Cards;
 
 use super::choices::Choice;
+use super::events::EventType;
 use super::locations::Player;
 use super::player_state::CardColumn;
 use super::{GameState, PersonOrEventType};
@@ -51,7 +52,9 @@ pub struct ObservedStateFull<'ctype> {
     opponent_hand_unknown_count: usize,
 
     my_columns: [CardColumn<'ctype>; 3],
+    my_events: [Option<&'ctype EventType>; 3],
     opponent_columns: [CardColumn<'ctype>; 3],
+    opponent_events: [Option<&'ctype EventType>; 3],
 
     cur_player: Player,
     cur_player_water: u32,
@@ -82,7 +85,9 @@ impl<'ctype> ObservedStateFull<'ctype> {
             opponent_hand_known: HashableCards::default(), // TODO: track known cards
             opponent_hand_unknown_count: game_state.player(player.other()).hand.count(),
             my_columns: game_state.player(player).columns.clone(),
+            my_events: game_state.player(player).events,
             opponent_columns: game_state.player(player.other()).columns.clone(),
+            opponent_events: game_state.player(player.other()).events,
             cur_player: game_state.cur_player,
             cur_player_water: game_state.cur_player_water,
             other_player_has_water_silo: game_state

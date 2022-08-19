@@ -575,14 +575,13 @@ impl Camp<'_> {
     /// Damages or destroys the camp.
     /// If `destroy` is true, the camp is always destroyed; otherwise, it is damaged.
     /// Does not check for win conditions; that must be done separately.
-    /// Panics if the camp is already destroyed.
     pub fn damage(&mut self, destroy: bool) {
         match self.status {
             CampStatus::Undamaged => {
                 self.status = if destroy { CampStatus::Destroyed } else { CampStatus::Damaged };
             }
             CampStatus::Damaged => self.status = CampStatus::Destroyed,
-            CampStatus::Destroyed => panic!("Tried to damage a destroyed camp"),
+            CampStatus::Destroyed => {}
         }
     }
 

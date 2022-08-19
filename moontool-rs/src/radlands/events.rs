@@ -6,6 +6,7 @@ use itertools::Itertools;
 use tui::text::Span;
 
 use super::choices::*;
+use super::locations::Player;
 use super::styles::*;
 use super::{GameResult, GameViewMut, IconEffect};
 
@@ -95,6 +96,39 @@ pub fn get_event_types() -> Vec<EventType> {
                     DamageColumnChoice::future(game_view.player, true, true, cols_with_people)
                 };
                 Ok(future)
+            },
+        },
+        EventType {
+            name: "Bombardment",
+            num_in_deck: 2,
+            junk_effect: IconEffect::Restore,
+            cost: 4,
+            resolve_turns: 3,
+            // Damage all the opponent's camps. Then, draw for each destroyed camp they have
+            on_resolve: |mut game_view| {
+                // damage the camps and count the number of destroyed camps
+                let mut num_destroyed_camps = 0;
+                for column in &mut game_view.other_state_mut().columns {
+                    column.camp.damage(false);
+                    if column.camp.is_destroyed() {
+                        num_destroyed_camps += 1;
+                    }
+                }
+
+                // check win condition
+                if num_destroyed_camps == 3 {
+                    return Err(match game_view.player {
+                        Player::Player1 => GameResult::P1Wins,
+                        Player::Player2 => GameResult::P2Wins,
+                    });
+                }
+
+                // draw cards
+                for _ in 0..num_destroyed_camps {
+                    game_view.draw_card_into_hand()?;
+                }
+
+                Ok(ChoiceFuture::immediate(game_view.game_state))
             },
         },
     ]

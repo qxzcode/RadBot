@@ -12,6 +12,7 @@ use crate::{
     make_spans,
     radlands::{
         choices::Choice,
+        events::get_event_types,
         locations::{CardRowIndex, ColumnIndex, Player},
         people::get_person_types,
         styles::*,
@@ -65,17 +66,19 @@ impl GameStateWidget<'_, '_, '_> {
         let inner_area = block.inner(area);
         block.render(area, buf);
 
+        #[rustfmt::skip]
         lazy_static! {
-            // TODO: include event cards too
-            static ref MAX_CARD_NAME_LEN: u16 = get_person_types().iter()
+            static ref MAX_PERSON_NAME_LEN: u16 = get_person_types().iter()
                 .map(|person_type| person_type.name.len())
                 .max().unwrap()
                 .try_into().unwrap();
 
-            static ref MAX_EVENT_NAME_LEN: u16 = get_person_types().iter()
-                .map(|person_type| person_type.name.len())
+            static ref MAX_EVENT_NAME_LEN: u16 = get_event_types().iter()
+                .map(|event_type| event_type.name.len())
                 .max().unwrap()
                 .try_into().unwrap();
+
+            static ref MAX_CARD_NAME_LEN: u16 = u16::max(*MAX_PERSON_NAME_LEN, *MAX_EVENT_NAME_LEN);
         }
 
         let [hand_rect, events_rect, board_rect] = Layout::default()
