@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use tui::widgets::ListItem;
 
 use crate::radlands::choices::*;
+use crate::radlands::controllers::monte_carlo::format_stats_prefix;
 use crate::radlands::observed_state::ObservedState;
 use crate::radlands::*;
 use crate::ui;
@@ -149,7 +150,7 @@ impl<'g, 'ctype: 'g, C: PlayerController<'ctype>, F: Fn(Player) -> C> MCTSContro
                         Some((
                             opt.num_rollouts,
                             (opt.num_rollouts as f64) / (root_count.unwrap() as f64),
-                            opt.win_rate() * 100.0,
+                            opt.win_rate(),
                         )),
                     )
                 } else {
@@ -163,14 +164,9 @@ impl<'g, 'ctype: 'g, C: PlayerController<'ctype>, F: Fn(Player) -> C> MCTSContro
                 spans.0.splice(
                     0..0,
                     [if let Some((count, visit_proportion, win_rate)) = stats {
-                        let bar_width = (visit_proportion * 10.0).round() as usize;
-                        format!(
-                            "{count:8}  {}{}  {win_rate:6.2}%   ",
-                            ".".repeat(10 - bar_width),
-                            "#".repeat(bar_width),
-                        )
+                        format_stats_prefix(count, visit_proportion, *win_rate) + "   "
                     } else {
-                        " ".repeat(8 + (2 + 10) + (2 + 6 + 1) + 3)
+                        " ".repeat(32) // length of the stats prefix
                     }
                     .into()],
                 );

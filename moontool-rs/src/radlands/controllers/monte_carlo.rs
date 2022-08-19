@@ -110,14 +110,10 @@ pub fn format_option_stats<'g, 'ctype: 'g>(
         .iter()
         .enumerate()
         .map(|(option_index, option_stats)| {
-            let bar_width = (option_stats.num_rollouts as f64) / (parent_rollouts as f64) * 10.0;
-            let bar_width = bar_width.round() as usize;
-            let stats = format!(
-                "{:8}  {}{}  {:6.2}%",
+            let stats = format_stats_prefix(
                 option_stats.num_rollouts,
-                ".".repeat(10 - bar_width),
-                "#".repeat(bar_width),
-                option_stats.win_rate() * 100.0,
+                (option_stats.num_rollouts as f64) / (parent_rollouts as f64),
+                *option_stats.win_rate(),
             );
             let stats_style = if option_stats.num_rollouts == max_visit_count {
                 Style::default()
@@ -133,6 +129,19 @@ pub fn format_option_stats<'g, 'ctype: 'g>(
             ListItem::new(spans)
         })
         .collect()
+}
+
+pub fn format_stats_prefix(visit_count: u32, visit_proportion: f64, win_rate: f64) -> String {
+    let max_bar_width = 10;
+    let bar_width = visit_proportion * (max_bar_width as f64);
+    let bar_width = (bar_width.round() as usize).clamp(0, max_bar_width);
+    format!(
+        "{:8}  {}{}  {:6.2}%",
+        visit_count,
+        ".".repeat(max_bar_width - bar_width),
+        "#".repeat(bar_width),
+        win_rate * 100.0,
+    )
 }
 
 pub fn show_option_stats<'g, 'ctype: 'g>(

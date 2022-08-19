@@ -188,7 +188,7 @@ impl AppState {
                 .expect("Failed to send crossterm event");
         })?;
 
-        'main_loop: loop {
+        let was_aborted = 'main_loop: loop {
             // update the app state
             self.frame_num += 1;
 
@@ -223,7 +223,7 @@ impl AppState {
                     RedrawEvent::Input(event) => {
                         if let Event::Key(key) = event {
                             if self.handle_key_event(key) {
-                                break 'main_loop;
+                                break 'main_loop false;
                             }
                         }
                     }
@@ -236,7 +236,7 @@ impl AppState {
                         Player::Player1 => self.p1_stats = stats,
                         Player::Player2 => self.p2_stats = stats,
                     },
-                    RedrawEvent::Abort => break 'main_loop,
+                    RedrawEvent::Abort => break 'main_loop true,
                 }
 
                 // get the next event (if any is available now)
@@ -248,13 +248,16 @@ impl AppState {
                     }
                 }
             }
-        }
+        };
 
         let _ = panic::take_hook();
 
         // restore terminal
         restore_terminal()?;
 
+        if was_aborted {
+            std::process::exit(1);
+        }
         Ok(())
     }
 
