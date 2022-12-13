@@ -8,10 +8,7 @@ use crate::{
     do_one_choice,
     radlands::{
         choices::Choice,
-        controllers::{
-            human::HumanController, mcts::MCTSController, monte_carlo::MonteCarloController,
-            random::RandomController,
-        },
+        controllers::{human::HumanController, mcts::MCTSController, random::RandomController},
         locations::Player,
         GameResult, GameState,
     },

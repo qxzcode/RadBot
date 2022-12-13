@@ -13,8 +13,8 @@ use radlands::people::PersonType;
 use radlands::*;
 
 use radlands::controllers::{
-    human::HumanController, mcts::MCTSController, monte_carlo::MonteCarloController,
-    random::RandomController, PlayerController,
+    human::HumanController, monte_carlo::MonteCarloController, random::RandomController,
+    PlayerController,
 };
 
 fn validate_secs(s: &str) -> Result<(), String> {

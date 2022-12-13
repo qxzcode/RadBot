@@ -259,7 +259,7 @@ impl<'g, 'ctype: 'g> GameState<'ctype> {
                         if destroy || *status == NonPunkStatus::Injured {
                             // the person was killed/destroyed;
                             // discard the card and empty the slot
-                            self.discard.push(PersonOrEventType::Person(*person_type));
+                            self.discard.push(PersonOrEventType::Person(person_type));
                             *slot = None;
                             true
                         } else {
