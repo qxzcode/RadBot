@@ -1,3 +1,7 @@
+# Rust
+/target
+/bench
+
 __pycache__/
 .vscode/
 .rendered.*
